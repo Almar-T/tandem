@@ -61,7 +61,7 @@ Deno.serve(async (req) => {
     // Compact context: open tasks so the AI can reference/update them by id.
     const { data: openTasks = [] } = await supabase
       .from('tasks')
-      .select('id, title, status, due_date, priority, assignee_id')
+      .select('id, title, status, due_date, priority, assignee_id, estimate_min, work_type, scheduled_start')
       .neq('status', 'completed')
       .order('due_date', { ascending: true, nullsFirst: false })
       .limit(50)
@@ -69,9 +69,17 @@ Deno.serve(async (req) => {
     const taskLines = openTasks
       .map((t) => {
         const who = profiles.find((p) => p.id === t.assignee_id)?.display_name ?? 'unassigned'
-        return `- id=${t.id} | "${t.title}" | ${t.status} | due ${t.due_date ?? 'none'} | ${t.priority} | ${who}`
+        const est = t.estimate_min ? `${t.estimate_min}m` : '?'
+        const sched = t.scheduled_start ? `sched ${t.scheduled_start}` : 'unscheduled'
+        return `- id=${t.id} | "${t.title}" | ${t.status} | ${t.work_type ?? 'task'} | est ${est} | due ${t.due_date ?? 'none'} | ${t.priority} | ${who} | ${sched}`
       })
       .join('\n')
+
+    const { data: activeGoals = [] } = await supabase
+      .from('goals')
+      .select('id, title')
+      .eq('status', 'active')
+    const goalLines = activeGoals.map((g) => `- id=${g.id} | "${g.title}"`).join('\n')
 
     const now = new Date()
     const systemInstruction = {
@@ -105,6 +113,24 @@ Deno.serve(async (req) => {
             '- To change or complete an existing task, use its exact id from the list below.',
             '- You cannot send push reminders yet (coming soon). If asked to remind, set a due date and say reminders will arrive once notifications are enabled.',
             '',
+            '## Goals — INTERVIEW FIRST, PLAN SECOND',
+            '- When the user names a big objective ("launch my business", "get fit", "ship the app"), DO NOT propose or create any tasks yet. First INTERVIEW them to understand exactly what they want and how they are thinking about it.',
+            '- Ask focused, open-ended questions — bundled a few at a time, over one or more rounds — to draw out: what success looks like to them, their deadline, what they have already done, scope and must-haves vs nice-to-haves, constraints (time, money, skills, tools), who is involved (them, their partner, others), and how they picture getting there. You MAY offer suggestions or options to help them think, but the aim is to extract THEIR vision, priorities, and plan — not to impose yours.',
+            '- Keep interviewing until you genuinely understand the goal well enough to plan it well. Get as much relevant detail from them as you reasonably can before planning.',
+            '- THEN summarise your understanding back to them, and only after that propose the goal + milestones + a concrete task breakdown for their approval.',
+            '- Call create_goal (and create_task with the returned goal_id for each task) ONLY after they approve your proposed plan. Never create the goal or tasks during the interview phase.',
+            '- Progress tracks automatically from completed linked tasks, so make tasks concrete and completable. You can also link a task to an existing goal by goal_id from the list below.',
+            '',
+            '## Day planning',
+            '- When asked to plan a day ("plan my day"), first ask which day, what hours they are available, and any fixed commitments — unless they already told you.',
+            '- Then build an efficient schedule using evidence-based principles: protect a long uninterrupted block for deep_work in their high-energy window (usually morning); batch similar/admin work to cut context-switching; do urgent and near-deadline and high-priority work first; respect dependencies; insert short breaks (~5–10 min roughly every 90 min) and a longer break after deep work; keep it realistic using each task\'s estimate (and the learned actuals once available).',
+            '- Place each task with schedule_task(task_id, start, end) using ISO timestamps within their available hours.',
+            '- After scheduling, explain the plan in plain language: when each task happens, where the breaks go, and WHY you arranged it that way.',
+            '- To replan, re-schedule the affected tasks. If a task is completed, added, or slips and they ask, rebalance the rest of the day around what remains.',
+            '',
+            'Current goals:',
+            goalLines || '(none)',
+            '',
             'Current open tasks:',
             taskLines || '(none)',
           ]
@@ -127,7 +153,7 @@ Deno.serve(async (req) => {
     const actions: { type: string; detail: string }[] = []
     let reply = ''
 
-    for (let i = 0; i < 3; i++) {
+    for (let i = 0; i < 4; i++) {
       const res = await fetch(
         `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent?key=${GEMINI_KEY}`,
         {
@@ -187,6 +213,27 @@ function buildTools(names: string[]) {
           estimate_min: { type: 'INTEGER', description: 'Estimated minutes to complete' },
           assignee,
           show_on_calendar: { type: 'BOOLEAN' },
+          goal_id: { type: 'STRING', description: 'Link to a goal id (from create_goal or the goals list)' },
+        },
+        required: ['title'],
+      },
+    },
+    {
+      name: 'create_goal',
+      description:
+        'Create a high-level goal/objective, optionally with milestones. Returns goal_id so you can link tasks to it with create_task.',
+      parameters: {
+        type: 'OBJECT',
+        properties: {
+          title: { type: 'STRING' },
+          description: { type: 'STRING' },
+          category: { type: 'STRING' },
+          target_date: { type: 'STRING', description: 'Deadline as ISO date (YYYY-MM-DD)' },
+          milestones: {
+            type: 'ARRAY',
+            items: { type: 'STRING' },
+            description: 'Ordered milestone titles',
+          },
         },
         required: ['title'],
       },
@@ -218,6 +265,19 @@ function buildTools(names: string[]) {
         required: ['task_id'],
       },
     },
+    {
+      name: 'schedule_task',
+      description: 'Place a task on the day timeline by setting its start and end time.',
+      parameters: {
+        type: 'OBJECT',
+        properties: {
+          task_id: { type: 'STRING' },
+          start: { type: 'STRING', description: 'ISO 8601 start time' },
+          end: { type: 'STRING', description: 'ISO 8601 end time' },
+        },
+        required: ['task_id', 'start', 'end'],
+      },
+    },
   ]
 }
 
@@ -230,7 +290,7 @@ async function execTool(
   args: Record<string, unknown>,
   myId: string,
   profiles: Profile[],
-): Promise<{ ok: boolean; detail: string; error?: string }> {
+): Promise<{ ok: boolean; detail: string; error?: string; goal_id?: string }> {
   const resolveAssignee = (a: unknown): string =>
     (typeof a === 'string' && profiles.find((p) => p.display_name === a)?.id) || myId
 
@@ -246,11 +306,36 @@ async function execTool(
         estimate_min: args.estimate_min ?? null,
         show_on_calendar: args.show_on_calendar ?? false,
         assignee_id: resolveAssignee(args.assignee),
+        goal_id: args.goal_id ?? null,
         created_by: myId,
       }
       const { error } = await supabase.from('tasks').insert(row)
       if (error) throw error
       return { ok: true, detail: `Created task "${args.title}"` }
+    }
+
+    if (name === 'create_goal') {
+      const { data, error } = await supabase
+        .from('goals')
+        .insert({
+          title: args.title,
+          description: args.description ?? null,
+          category: args.category ?? null,
+          target_date: args.target_date ?? null,
+          owner_id: myId,
+        })
+        .select('id')
+        .single()
+      if (error) throw error
+      const goalId = data.id as string
+
+      const titles = Array.isArray(args.milestones) ? (args.milestones as unknown[]) : []
+      if (titles.length) {
+        await supabase.from('milestones').insert(
+          titles.map((t, i) => ({ goal_id: goalId, title: String(t), sort_order: i })),
+        )
+      }
+      return { ok: true, detail: `Created goal "${args.title}"`, goal_id: goalId }
     }
 
     if (name === 'update_task') {
@@ -271,6 +356,15 @@ async function execTool(
         .eq('id', args.task_id)
       if (error) throw error
       return { ok: true, detail: 'Marked task complete' }
+    }
+
+    if (name === 'schedule_task') {
+      const { error } = await supabase
+        .from('tasks')
+        .update({ scheduled_start: args.start, scheduled_end: args.end })
+        .eq('id', args.task_id)
+      if (error) throw error
+      return { ok: true, detail: 'Scheduled a task' }
     }
 
     return { ok: false, detail: '', error: `Unknown tool ${name}` }

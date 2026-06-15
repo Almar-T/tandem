@@ -1,9 +1,11 @@
 import { Target } from 'lucide-react'
-import type { Goal } from '@/lib/types'
+import type { Goal, Task } from '@/lib/types'
+import { cn } from '@/lib/cn'
 import { useGoals } from './useGoals'
+import { goalPace, goalProgress, PACE_LABEL } from './goalProgress'
 
 /** Always-visible reminder of what you're working toward (per the spec). */
-export function GoalsBar() {
+export function GoalsBar({ tasks }: { tasks: Task[] }) {
   const { data: goals = [] } = useGoals()
   const active = goals.filter((g) => g.status === 'active')
 
@@ -16,12 +18,12 @@ export function GoalsBar() {
 
       {active.length === 0 ? (
         <p className="text-sm text-slate-500">
-          No goals yet. Goal tracking — with AI breakdown into tasks — arrives in Phase 4.
+          No goals yet. Create one on the Goals tab, or ask the Planner to break a big one down.
         </p>
       ) : (
         <div className="flex gap-3 overflow-x-auto pb-1">
           {active.map((g) => (
-            <GoalChip key={g.id} goal={g} />
+            <GoalChip key={g.id} goal={g} tasks={tasks} />
           ))}
         </div>
       )}
@@ -29,11 +31,15 @@ export function GoalsBar() {
   )
 }
 
-function GoalChip({ goal }: { goal: Goal }) {
-  const pct = Math.round(goal.progress)
+function GoalChip({ goal, tasks }: { goal: Goal; tasks: Task[] }) {
+  const pct = goalProgress(goal, tasks)
+  const pace = PACE_LABEL[goalPace(goal, pct)]
   return (
-    <div className="min-w-[200px] flex-1 rounded-xl border border-slate-800 bg-slate-950/50 p-3">
-      <div className="truncate text-sm font-medium">{goal.title}</div>
+    <div className="min-w-[210px] flex-1 rounded-xl border border-slate-800 bg-slate-950/50 p-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="truncate text-sm font-medium">{goal.title}</div>
+        <span className={cn('shrink-0 rounded px-1.5 py-0.5 text-[10px]', pace.badge)}>{pace.label}</span>
+      </div>
       <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-800">
         <div className="h-full rounded-full bg-indigo-500" style={{ width: `${pct}%` }} />
       </div>

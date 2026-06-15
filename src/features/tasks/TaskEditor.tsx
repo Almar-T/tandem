@@ -3,6 +3,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { useAuth } from '@/auth/AuthProvider'
 import { useProfiles } from '@/features/profiles/useProfiles'
+import { useGoals } from '@/features/goals/useGoals'
 import type { Priority, Task, TaskStatus, WorkType } from '@/lib/types'
 import { EDITABLE_STATUSES, PRIORITIES, WORK_TYPES } from './constants'
 import { fromDatetimeLocal, toDatetimeLocal } from './util'
@@ -24,6 +25,7 @@ interface Props {
 export function TaskEditor({ open, onClose, task, defaultDue = null }: Props) {
   const { user } = useAuth()
   const { data: profiles = [] } = useProfiles()
+  const { data: goals = [] } = useGoals()
   const create = useCreateTask()
   const update = useUpdateTask()
 
@@ -37,6 +39,7 @@ export function TaskEditor({ open, onClose, task, defaultDue = null }: Props) {
   const [showOnCalendar, setShowOnCalendar] = useState(false)
   const [assignee, setAssignee] = useState('')
   const [estimate, setEstimate] = useState('')
+  const [goalId, setGoalId] = useState('')
 
   // Re-seed the form whenever the dialog opens (new task vs. a specific task).
   useEffect(() => {
@@ -52,6 +55,7 @@ export function TaskEditor({ open, onClose, task, defaultDue = null }: Props) {
     setShowOnCalendar(task?.show_on_calendar ?? (!task && defaultDue != null))
     setAssignee(task?.assignee_id ?? user?.id ?? '')
     setEstimate(task?.estimate_min ? String(task.estimate_min) : '')
+    setGoalId(task?.goal_id ?? '')
   }, [open, task, defaultDue, user?.id])
 
   const busy = create.isPending || update.isPending
@@ -71,6 +75,7 @@ export function TaskEditor({ open, onClose, task, defaultDue = null }: Props) {
       show_on_calendar: showOnCalendar,
       assignee_id: assignee || null,
       estimate_min: estimate ? Number(estimate) : null,
+      goal_id: goalId || null,
     }
 
     if (task) {
@@ -199,21 +204,36 @@ export function TaskEditor({ open, onClose, task, defaultDue = null }: Props) {
           </span>
         </label>
 
-        <label className={labelCls}>
-          <span>Assigned to</span>
-          <select
-            className={input}
-            value={assignee}
-            onChange={(e) => setAssignee(e.target.value)}
-          >
-            <option value="">Unassigned</option>
-            {profiles.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.display_name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="grid grid-cols-2 gap-3">
+          <label className={labelCls}>
+            <span>Assigned to</span>
+            <select
+              className={input}
+              value={assignee}
+              onChange={(e) => setAssignee(e.target.value)}
+            >
+              <option value="">Unassigned</option>
+              {profiles.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.display_name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className={labelCls}>
+            <span>Goal</span>
+            <select className={input} value={goalId} onChange={(e) => setGoalId(e.target.value)}>
+              <option value="">None</option>
+              {goals
+                .filter((g) => g.status === 'active')
+                .map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.title}
+                  </option>
+                ))}
+            </select>
+          </label>
+        </div>
 
         <div className="flex justify-end gap-2 pt-2">
           <Button type="button" variant="ghost" onClick={onClose}>

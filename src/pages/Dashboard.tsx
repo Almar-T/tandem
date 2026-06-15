@@ -3,6 +3,7 @@ import { useAuth } from '@/auth/AuthProvider'
 import { Button } from '@/components/ui/Button'
 import { GoalsBar } from '@/features/goals/GoalsBar'
 import { Calendar } from '@/features/dashboard/Calendar'
+import { DayPlan } from '@/features/dashboard/DayPlan'
 import { TodayPanel } from '@/features/dashboard/TodayPanel'
 import { useTasks } from '@/features/tasks/useTasks'
 import { useTaskEditor } from '@/features/tasks/useTaskEditor'
@@ -24,10 +25,11 @@ export function Dashboard() {
         </Button>
       </div>
 
-      <GoalsBar />
+      <GoalsBar tasks={tasks} />
 
       <div className="grid gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-2">
+        <div className="space-y-4 lg:col-span-2">
+          <DayPlan tasks={tasks} onSelectTask={ed.openEdit} />
           <Calendar tasks={tasks} onSelectTask={ed.openEdit} onSelectDay={ed.openNew} />
         </div>
         <TodayPanel tasks={tasks} onSelectTask={ed.openEdit} />

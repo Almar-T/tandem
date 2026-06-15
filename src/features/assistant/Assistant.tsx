@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Bot, Send, Sparkles, X } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useAssistant } from './useAssistant'
+import { OPEN_PLANNER_EVENT } from './openPlanner'
 
 const SUGGESTIONS = [
   'Add a 1-hour deep-work block tomorrow to draft the pitch',
@@ -19,6 +20,17 @@ export function Assistant() {
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight })
   }, [messages, loading])
+
+  // Let other parts of the app open the Planner and (optionally) send a prompt.
+  useEffect(() => {
+    function handler(e: Event) {
+      setOpen(true)
+      const prompt = (e as CustomEvent<string | undefined>).detail
+      if (prompt) send(prompt)
+    }
+    window.addEventListener(OPEN_PLANNER_EVENT, handler as EventListener)
+    return () => window.removeEventListener(OPEN_PLANNER_EVENT, handler as EventListener)
+  }, [send])
 
   function onSubmit(e: FormEvent) {
     e.preventDefault()

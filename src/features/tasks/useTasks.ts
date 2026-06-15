@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useId } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import {
@@ -18,10 +18,13 @@ const KEY = ['tasks']
  */
 export function useTasks() {
   const qc = useQueryClient()
+  // Unique per hook instance — useTasks runs in several components at once,
+  // and Supabase rejects two channels sharing a name.
+  const channelId = useId().replace(/[^a-zA-Z0-9]/g, '')
 
   useEffect(() => {
     const channel = supabase
-      .channel('tasks-changes')
+      .channel(`tasks-changes-${channelId}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'tasks' },
@@ -31,7 +34,7 @@ export function useTasks() {
     return () => {
       void supabase.removeChannel(channel)
     }
-  }, [qc])
+  }, [qc, channelId])
 
   return useQuery({ queryKey: KEY, queryFn: fetchTasks })
 }
