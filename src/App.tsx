@@ -7,6 +7,7 @@ import { AppShell } from '@/components/AppShell'
 import { Login } from '@/pages/Login'
 import { Dashboard } from '@/pages/Dashboard'
 import { Placeholder } from '@/pages/Placeholder'
+import { TasksPage } from '@/features/tasks/TasksPage'
 
 // Must match `base` in vite.config.ts so routing works under /tandem/ on GitHub Pages.
 const BASENAME = '/tandem'
@@ -26,7 +27,7 @@ export default function App() {
               }
             >
               <Route index element={<Dashboard />} />
-              <Route path="tasks" element={<Placeholder title="Tasks" phase="Phase 1" />} />
+              <Route path="tasks" element={<TasksPage />} />
               <Route
                 path="calendar"
                 element={<Placeholder title="Calendar" phase="Phase 2" />}

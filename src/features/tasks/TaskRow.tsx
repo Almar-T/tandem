@@ -1,0 +1,104 @@
+import { Check, Pencil, Trash2 } from 'lucide-react'
+import type { Profile, Task } from '@/lib/types'
+import { cn } from '@/lib/cn'
+import { initialOf } from '@/features/profiles/useProfiles'
+import { PRIORITIES, STATUS_BADGE } from './constants'
+import { effectiveStatus, formatDue, formatMinutes } from './util'
+import { useDeleteTask, useUpdateTask } from './useTasks'
+
+interface Props {
+  task: Task
+  profiles: Profile[]
+  onEdit: (task: Task) => void
+}
+
+export function TaskRow({ task, profiles, onEdit }: Props) {
+  const update = useUpdateTask()
+  const remove = useDeleteTask()
+
+  const status = effectiveStatus(task)
+  const done = task.status === 'completed'
+  const priority = PRIORITIES.find((p) => p.value === task.priority)
+  const assignee = profiles.find((p) => p.id === task.assignee_id)
+
+  function toggleDone() {
+    update.mutate({
+      id: task.id,
+      patch: { status: done ? 'in_progress' : 'completed' },
+    })
+  }
+
+  return (
+    <div className="flex items-center gap-3 border-b border-slate-800/60 px-2 py-2.5 hover:bg-slate-900/40">
+      {/* Complete toggle */}
+      <button
+        onClick={toggleDone}
+        className={cn(
+          'grid h-5 w-5 shrink-0 place-items-center rounded-md border transition',
+          done
+            ? 'border-green-600 bg-green-600 text-white'
+            : 'border-slate-600 text-transparent hover:border-slate-400',
+        )}
+        title={done ? 'Mark incomplete' : 'Mark complete'}
+      >
+        <Check size={14} />
+      </button>
+
+      {/* Title + meta */}
+      <button onClick={() => onEdit(task)} className="min-w-0 flex-1 text-left">
+        <div className={cn('truncate text-sm', done && 'text-slate-500 line-through')}>
+          {task.title}
+        </div>
+        <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px]">
+          <span className={cn('rounded px-1.5 py-0.5', STATUS_BADGE[status].badge)}>
+            {STATUS_BADGE[status].label}
+          </span>
+          {priority && (
+            <span className={cn('rounded px-1.5 py-0.5', priority.badge)}>{priority.label}</span>
+          )}
+          {task.category && (
+            <span className="rounded bg-slate-800 px-1.5 py-0.5 text-slate-400">
+              {task.category}
+            </span>
+          )}
+          {task.estimate_min ? (
+            <span className="text-slate-500">~{formatMinutes(task.estimate_min)}</span>
+          ) : null}
+          {task.due_date && (
+            <span className={cn(status === 'overdue' ? 'text-red-400' : 'text-slate-500')}>
+              {formatDue(task.due_date)}
+            </span>
+          )}
+        </div>
+      </button>
+
+      {/* Assignee avatar */}
+      <div
+        className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-slate-700 text-xs font-medium text-slate-200"
+        title={assignee?.display_name ?? 'Unassigned'}
+      >
+        {assignee ? initialOf(assignee.display_name) : '–'}
+      </div>
+
+      {/* Actions */}
+      <div className="flex shrink-0 items-center">
+        <button
+          onClick={() => onEdit(task)}
+          className="rounded-lg p-1.5 text-slate-500 transition hover:bg-slate-800 hover:text-slate-300"
+          title="Edit"
+        >
+          <Pencil size={15} />
+        </button>
+        <button
+          onClick={() => {
+            if (confirm(`Delete "${task.title}"?`)) remove.mutate(task.id)
+          }}
+          className="rounded-lg p-1.5 text-slate-500 transition hover:bg-red-950 hover:text-red-400"
+          title="Delete"
+        >
+          <Trash2 size={15} />
+        </button>
+      </div>
+    </div>
+  )
+}
