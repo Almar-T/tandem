@@ -1,0 +1,29 @@
+# dependencies
+node_modules
+.pnp
+.pnp.js
+
+# build
+dist
+dist-ssr
+*.local
+
+# env & secrets — NEVER commit these
+.env
+.env.*
+!.env.example
+vapid-keys.json
+*.pem
+*.key
+
+# supabase local
+supabase/.branches
+supabase/.temp
+supabase/.env
+
+# editor / os
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.log
