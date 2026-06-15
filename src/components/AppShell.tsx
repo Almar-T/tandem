@@ -10,6 +10,7 @@ import {
 import { useAuth } from '@/auth/AuthProvider'
 import { cn } from '@/lib/cn'
 import { Assistant } from '@/features/assistant/Assistant'
+import { TimerBar } from '@/features/timer/TimerBar'
 
 const NAV = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
@@ -87,7 +88,8 @@ export function AppShell() {
         ))}
       </nav>
 
-      {/* Always-present AI coach. */}
+      {/* Persistent focus-session bar + always-present Planner. */}
+      <TimerBar />
       <Assistant />
     </div>
   )

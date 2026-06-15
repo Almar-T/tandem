@@ -3,6 +3,7 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClient } from '@/lib/queryClient'
 import { AuthProvider } from '@/auth/AuthProvider'
 import { ProtectedRoute } from '@/auth/ProtectedRoute'
+import { TimerProvider } from '@/features/timer/TimerProvider'
 import { AppShell } from '@/components/AppShell'
 import { Login } from '@/pages/Login'
 import { Dashboard } from '@/pages/Dashboard'
@@ -18,6 +19,7 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
+        <TimerProvider>
         <BrowserRouter basename={BASENAME}>
           <Routes>
             <Route path="/login" element={<Login />} />
@@ -39,6 +41,7 @@ export default function App() {
             </Route>
           </Routes>
         </BrowserRouter>
+        </TimerProvider>
       </AuthProvider>
     </QueryClientProvider>
   )

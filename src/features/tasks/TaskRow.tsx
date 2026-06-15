@@ -1,7 +1,8 @@
-import { CalendarDays, Check, Pencil, Trash2 } from 'lucide-react'
+import { CalendarDays, Check, Pencil, Play, Square, Trash2 } from 'lucide-react'
 import type { Profile, Task } from '@/lib/types'
 import { cn } from '@/lib/cn'
 import { initialOf } from '@/features/profiles/useProfiles'
+import { useTimer } from '@/features/timer/TimerProvider'
 import { PRIORITIES, STATUS_BADGE } from './constants'
 import { effectiveStatus, formatDue, formatMinutes } from './util'
 import { useDeleteTask, useUpdateTask } from './useTasks'
@@ -15,6 +16,8 @@ interface Props {
 export function TaskRow({ task, profiles, onEdit }: Props) {
   const update = useUpdateTask()
   const remove = useDeleteTask()
+  const timer = useTimer()
+  const isTiming = timer.task?.id === task.id
 
   const status = effectiveStatus(task)
   const done = task.status === 'completed'
@@ -85,6 +88,20 @@ export function TaskRow({ task, profiles, onEdit }: Props) {
 
       {/* Actions */}
       <div className="flex shrink-0 items-center">
+        {!done && (
+          <button
+            onClick={() => (isTiming ? timer.stop() : timer.start(task))}
+            className={cn(
+              'rounded-lg p-1.5 transition',
+              isTiming
+                ? 'text-productive hover:bg-slate-800'
+                : 'text-slate-500 hover:bg-slate-800 hover:text-slate-300',
+            )}
+            title={isTiming ? 'Stop timer' : 'Start timer'}
+          >
+            {isTiming ? <Square size={15} /> : <Play size={15} />}
+          </button>
+        )}
         <button
           onClick={() => onEdit(task)}
           className="rounded-lg p-1.5 text-slate-500 transition hover:bg-slate-800 hover:text-slate-300"

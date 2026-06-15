@@ -81,6 +81,24 @@ Deno.serve(async (req) => {
       .eq('status', 'active')
     const goalLines = activeGoals.map((g) => `- id=${g.id} | "${g.title}"`).join('\n')
 
+    // Estimate-vs-actual history → per work-type calibration factors (the learning loop).
+    const { data: stats = [] } = await supabase
+      .from('estimation_stats')
+      .select('work_type, estimate_min, actual_min')
+      .eq('user_id', me.id)
+    const agg: Record<string, { est: number; act: number }> = {}
+    for (const s of stats) {
+      if (!s.estimate_min || !s.actual_min) continue
+      const k = s.work_type ?? 'other'
+      agg[k] = agg[k] ?? { est: 0, act: 0 }
+      agg[k].est += s.estimate_min
+      agg[k].act += s.actual_min
+    }
+    const calibrationLines = Object.entries(agg)
+      .filter(([, v]) => v.est > 0)
+      .map(([k, v]) => `- ${k}: actual ≈ ${(v.act / v.est).toFixed(2)}× the estimate`)
+      .join('\n')
+
     const now = new Date()
     const systemInstruction = {
       parts: [
@@ -127,6 +145,10 @@ Deno.serve(async (req) => {
             '- Place each task with schedule_task(task_id, start, end) using ISO timestamps within their available hours.',
             '- After scheduling, explain the plan in plain language: when each task happens, where the breaks go, and WHY you arranged it that way.',
             '- To replan, re-schedule the affected tasks. If a task is completed, added, or slips and they ask, rebalance the rest of the day around what remains.',
+            '',
+            '## Estimate calibration (learn from history)',
+            '- The user\'s real time-vs-estimate ratios by work type are below. Use them to calibrate: if a type historically runs over (ratio > 1), pad your estimates and schedule accordingly; if under, trim. Mention when you adjust for this.',
+            calibrationLines || '(no completed-task history yet — estimate from first principles)',
             '',
             'Current goals:',
             goalLines || '(none)',
