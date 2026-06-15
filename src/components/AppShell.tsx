@@ -1,16 +1,10 @@
 import { NavLink, Outlet } from 'react-router-dom'
-import {
-  LayoutDashboard,
-  ListTodo,
-  Calendar,
-  Target,
-  BarChart3,
-  LogOut,
-} from 'lucide-react'
+import { LayoutDashboard, ListTodo, Calendar, Target, BarChart3, LogOut } from 'lucide-react'
 import { useAuth } from '@/auth/AuthProvider'
 import { cn } from '@/lib/cn'
 import { Assistant } from '@/features/assistant/Assistant'
 import { TimerBar } from '@/features/timer/TimerBar'
+import { useDailyCheckin } from '@/features/checkin/useDailyCheckin'
 
 const NAV = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
@@ -23,6 +17,7 @@ const NAV = [
 export function AppShell() {
   const { user, signOut } = useAuth()
   const name = user?.user_metadata?.display_name ?? user?.email?.split('@')[0] ?? 'You'
+  useDailyCheckin()
 
   return (
     <div className="flex h-full flex-col">

@@ -37,6 +37,8 @@ export default defineConfig({
         ],
       },
       workbox: {
+        // Pull in our push/notificationclick handlers (served from public/).
+        importScripts: ['/tandem/push-sw.js'],
         navigateFallbackDenylist: [/^\/auth/],
         runtimeCaching: [
           {

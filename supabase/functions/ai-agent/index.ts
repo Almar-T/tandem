@@ -81,22 +81,17 @@ Deno.serve(async (req) => {
       .eq('status', 'active')
     const goalLines = activeGoals.map((g) => `- id=${g.id} | "${g.title}"`).join('\n')
 
-    // Estimate-vs-actual history → per work-type calibration factors (the learning loop).
-    const { data: stats = [] } = await supabase
-      .from('estimation_stats')
-      .select('work_type, estimate_min, actual_min')
-      .eq('user_id', me.id)
-    const agg: Record<string, { est: number; act: number }> = {}
-    for (const s of stats) {
-      if (!s.estimate_min || !s.actual_min) continue
-      const k = s.work_type ?? 'other'
-      agg[k] = agg[k] ?? { est: 0, act: 0 }
-      agg[k].est += s.estimate_min
-      agg[k].act += s.actual_min
-    }
-    const calibrationLines = Object.entries(agg)
-      .filter(([, v]) => v.est > 0)
-      .map(([k, v]) => `- ${k}: actual ≈ ${(v.act / v.est).toFixed(2)}× the estimate`)
+    // Time tracked so far today (both users) — for check-in / log-off summaries.
+    const todayStart = new Date()
+    todayStart.setHours(0, 0, 0, 0)
+    const { data: todaySessions = [] } = await supabase
+      .from('work_sessions')
+      .select('user_id, active_sec')
+      .gte('started_at', todayStart.toISOString())
+    const timeByUser: Record<string, number> = {}
+    for (const s of todaySessions) timeByUser[s.user_id] = (timeByUser[s.user_id] ?? 0) + s.active_sec
+    const timeLines = profiles
+      .map((p) => `- ${p.display_name}: ${Math.round((timeByUser[p.id] ?? 0) / 60)} min tracked today`)
       .join('\n')
 
     const now = new Date()
@@ -141,20 +136,25 @@ Deno.serve(async (req) => {
             '',
             '## Day planning',
             '- When asked to plan a day ("plan my day"), first ask which day, what hours they are available, and any fixed commitments — unless they already told you.',
-            '- Then build an efficient schedule using evidence-based principles: protect a long uninterrupted block for deep_work in their high-energy window (usually morning); batch similar/admin work to cut context-switching; do urgent and near-deadline and high-priority work first; respect dependencies; insert short breaks (~5–10 min roughly every 90 min) and a longer break after deep work; keep it realistic using each task\'s estimate (and the learned actuals once available).',
+            '- Then build an efficient schedule using evidence-based principles: protect a long uninterrupted block for deep_work in their high-energy window (usually morning); batch similar/admin work to cut context-switching; do urgent and near-deadline and high-priority work first; respect dependencies; insert short breaks (~5–10 min roughly every 90 min) and a longer break after deep work; keep it realistic using each task\'s estimate.',
             '- Place each task with schedule_task(task_id, start, end) using ISO timestamps within their available hours.',
             '- After scheduling, explain the plan in plain language: when each task happens, where the breaks go, and WHY you arranged it that way.',
             '- To replan, re-schedule the affected tasks. If a task is completed, added, or slips and they ask, rebalance the rest of the day around what remains.',
             '',
-            '## Estimate calibration (learn from history)',
-            '- The user\'s real time-vs-estimate ratios by work type are below. Use them to calibrate: if a type historically runs over (ratio > 1), pad your estimates and schedule accordingly; if under, trim. Mention when you adjust for this.',
-            calibrationLines || '(no completed-task history yet — estimate from first principles)',
+            '## Daily check-in',
+            '- When the user starts a daily check-in, greet them warmly and briefly. Ask if they have any new tasks to add today. Whether or not they do, show today\'s priorities and scheduled plan and flag anything overdue. If they add tasks, help organize them. Keep it short and motivating — a good morning kick-off, not a wall of text.',
+            '',
+            '## Logging off for the day',
+            '- When the user logs off for the day, give an end-of-day summary: what they completed today, what is still unfinished, anything overdue, roughly how much time they tracked today (from the figures below), one or two honest insights, and their top 2–3 priorities for tomorrow. Be concise and encouraging.',
             '',
             'Current goals:',
             goalLines || '(none)',
             '',
             'Current open tasks:',
             taskLines || '(none)',
+            '',
+            'Time tracked today:',
+            timeLines,
           ]
             .filter(Boolean)
             .join('\n'),
