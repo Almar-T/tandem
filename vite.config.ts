@@ -15,7 +15,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg', 'icons/apple-touch-icon.png'],
+      includeAssets: ['favicon.svg'],
       manifest: {
         name: 'Tandem',
         short_name: 'Tandem',
@@ -26,14 +26,7 @@ export default defineConfig({
         start_url: BASE,
         scope: BASE,
         icons: [
-          { src: 'icons/pwa-192.png', sizes: '192x192', type: 'image/png' },
-          { src: 'icons/pwa-512.png', sizes: '512x512', type: 'image/png' },
-          {
-            src: 'icons/pwa-512-maskable.png',
-            sizes: '512x512',
-            type: 'image/png',
-            purpose: 'maskable',
-          },
+          { src: 'favicon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any maskable' },
         ],
       },
       workbox: {

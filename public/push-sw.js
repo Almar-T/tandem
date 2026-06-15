@@ -11,8 +11,8 @@ self.addEventListener('push', (event) => {
   const title = data.title || 'Tandem'
   const options = {
     body: data.body || '',
-    icon: '/tandem/icons/pwa-192.png',
-    badge: '/tandem/icons/pwa-192.png',
+    icon: '/tandem/favicon.svg',
+    badge: '/tandem/favicon.svg',
     data: { url: data.url || '/tandem/' },
   }
   event.waitUntil(self.registration.showNotification(title, options))
