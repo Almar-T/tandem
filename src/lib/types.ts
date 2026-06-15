@@ -48,6 +48,7 @@ export interface Task {
   priority: Priority
   status: TaskStatus
   due_date: string | null
+  show_on_calendar: boolean
   assignee_id: string | null
   goal_id: string | null
   estimate_min: number | null

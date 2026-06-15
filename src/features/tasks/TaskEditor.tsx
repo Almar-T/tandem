@@ -16,10 +16,12 @@ interface Props {
   open: boolean
   onClose: () => void
   task?: Task | null
+  /** Pre-fill the due date when creating a new task (e.g. clicking a calendar day). */
+  defaultDue?: string | null
 }
 
 /** Create a new task (task=null) or edit an existing one. */
-export function TaskEditor({ open, onClose, task }: Props) {
+export function TaskEditor({ open, onClose, task, defaultDue = null }: Props) {
   const { user } = useAuth()
   const { data: profiles = [] } = useProfiles()
   const create = useCreateTask()
@@ -32,6 +34,7 @@ export function TaskEditor({ open, onClose, task }: Props) {
   const [priority, setPriority] = useState<Priority>('medium')
   const [status, setStatus] = useState<TaskStatus>('not_started')
   const [due, setDue] = useState('')
+  const [showOnCalendar, setShowOnCalendar] = useState(false)
   const [assignee, setAssignee] = useState('')
   const [estimate, setEstimate] = useState('')
 
@@ -44,10 +47,12 @@ export function TaskEditor({ open, onClose, task }: Props) {
     setWorkType(task?.work_type ?? '')
     setPriority(task?.priority ?? 'medium')
     setStatus(task?.status ?? 'not_started')
-    setDue(toDatetimeLocal(task?.due_date ?? null))
+    setDue(toDatetimeLocal(task?.due_date ?? defaultDue ?? null))
+    // New tasks created by clicking a calendar day default to showing on the calendar.
+    setShowOnCalendar(task?.show_on_calendar ?? (!task && defaultDue != null))
     setAssignee(task?.assignee_id ?? user?.id ?? '')
     setEstimate(task?.estimate_min ? String(task.estimate_min) : '')
-  }, [open, task, user?.id])
+  }, [open, task, defaultDue, user?.id])
 
   const busy = create.isPending || update.isPending
 
@@ -63,6 +68,7 @@ export function TaskEditor({ open, onClose, task }: Props) {
       priority,
       status,
       due_date: fromDatetimeLocal(due),
+      show_on_calendar: showOnCalendar,
       assignee_id: assignee || null,
       estimate_min: estimate ? Number(estimate) : null,
     }
@@ -179,6 +185,19 @@ export function TaskEditor({ open, onClose, task }: Props) {
             />
           </label>
         </div>
+
+        <label className="flex items-center gap-2.5 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2.5">
+          <input
+            type="checkbox"
+            checked={showOnCalendar}
+            onChange={(e) => setShowOnCalendar(e.target.checked)}
+            className="h-4 w-4 accent-indigo-500"
+          />
+          <span className="text-sm">
+            Show on calendar
+            <span className="ml-1 text-xs text-slate-500">— uses the due date as the event time</span>
+          </span>
+        </label>
 
         <label className={labelCls}>
           <span>Assigned to</span>

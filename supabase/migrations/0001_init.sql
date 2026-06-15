@@ -70,6 +70,7 @@ create table tasks (
   priority        priority not null default 'medium',
   status          task_status not null default 'not_started',
   due_date        timestamptz,
+  show_on_calendar boolean not null default false,  -- only flagged tasks appear on the calendar
   assignee_id     uuid references profiles,
   goal_id         uuid references goals on delete set null,
   estimate_min    int,

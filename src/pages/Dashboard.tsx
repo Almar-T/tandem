@@ -1,44 +1,39 @@
+import { Plus } from 'lucide-react'
 import { useAuth } from '@/auth/AuthProvider'
+import { Button } from '@/components/ui/Button'
+import { GoalsBar } from '@/features/goals/GoalsBar'
+import { Calendar } from '@/features/dashboard/Calendar'
+import { TodayPanel } from '@/features/dashboard/TodayPanel'
+import { useTasks } from '@/features/tasks/useTasks'
+import { useTaskEditor } from '@/features/tasks/useTaskEditor'
+import { TaskEditor } from '@/features/tasks/TaskEditor'
 
-/**
- * Phase 0 dashboard placeholder — confirms you're signed in on this device.
- * Phases 1–8 fill this in: pinned goals, calendar, today panel, productivity,
- * and AI recommendations.
- */
+/** The central hub: pinned goals, an interactive calendar, and today's focus. */
 export function Dashboard() {
   const { user } = useAuth()
+  const { data: tasks = [] } = useTasks()
+  const ed = useTaskEditor()
   const name = user?.user_metadata?.display_name ?? user?.email?.split('@')[0] ?? 'there'
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4">
-      <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6">
-        <h1 className="text-xl font-semibold">Welcome to Tandem, {name} 👋</h1>
-        <p className="mt-2 text-sm text-slate-400">
-          You're signed in. This is the calendar dashboard hub — it'll grow over the next
-          phases into your pinned goals, an interactive calendar, today's tasks, productivity
-          stats, and AI recommendations.
-        </p>
+    <div className="mx-auto max-w-6xl space-y-4">
+      <div className="flex items-center justify-between">
+        <h1 className="text-xl font-semibold">Good to see you, {name}</h1>
+        <Button onClick={() => ed.openNew()}>
+          <Plus size={16} /> New task
+        </Button>
       </div>
 
-      <ol className="space-y-2 text-sm text-slate-400">
-        {[
-          'Phase 1 — shared tasks with real-time sync',
-          'Phase 2 — calendar dashboard + pinned goals',
-          'Phase 3 — AI task creation',
-          'Phase 4 — goals + AI breakdown',
-          'Phase 5 — AI day planner',
-          'Phase 6 — timer + productivity states',
-          'Phase 7 — analytics',
-          'Phase 8 — notifications, daily check-in, log off',
-        ].map((step) => (
-          <li
-            key={step}
-            className="rounded-lg border border-slate-800/60 bg-slate-900/30 px-4 py-2"
-          >
-            {step}
-          </li>
-        ))}
-      </ol>
+      <GoalsBar />
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        <div className="lg:col-span-2">
+          <Calendar tasks={tasks} onSelectTask={ed.openEdit} onSelectDay={ed.openNew} />
+        </div>
+        <TodayPanel tasks={tasks} onSelectTask={ed.openEdit} />
+      </div>
+
+      <TaskEditor open={ed.open} onClose={ed.close} task={ed.task} defaultDue={ed.defaultDue} />
     </div>
   )
 }

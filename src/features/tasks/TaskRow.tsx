@@ -1,4 +1,4 @@
-import { Check, Pencil, Trash2 } from 'lucide-react'
+import { CalendarDays, Check, Pencil, Trash2 } from 'lucide-react'
 import type { Profile, Task } from '@/lib/types'
 import { cn } from '@/lib/cn'
 import { initialOf } from '@/features/profiles/useProfiles'
@@ -68,6 +68,9 @@ export function TaskRow({ task, profiles, onEdit }: Props) {
             <span className={cn(status === 'overdue' ? 'text-red-400' : 'text-slate-500')}>
               {formatDue(task.due_date)}
             </span>
+          )}
+          {task.show_on_calendar && (
+            <CalendarDays size={12} className="text-indigo-400" aria-label="On calendar" />
           )}
         </div>
       </button>
