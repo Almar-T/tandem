@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '@/auth/AuthProvider'
 import { cn } from '@/lib/cn'
+import { Assistant } from '@/features/assistant/Assistant'
 
 const NAV = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
@@ -85,6 +86,9 @@ export function AppShell() {
           </NavLink>
         ))}
       </nav>
+
+      {/* Always-present AI coach. */}
+      <Assistant />
     </div>
   )
 }
