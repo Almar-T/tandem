@@ -17,8 +17,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg'],
       manifest: {
-        name: 'Tandem',
-        short_name: 'Tandem',
+        name: 'HearthHall',
+        short_name: 'HearthHall',
         description: 'A shared AI-powered productivity OS for two.',
         theme_color: '#1b2a1e',
         background_color: '#f9f7f2',
