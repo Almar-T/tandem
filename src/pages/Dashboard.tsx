@@ -20,6 +20,7 @@ import { filterRange, totalsFor, formatHours } from '@/features/analytics/analyt
 import { ManualHoursModal } from '@/features/timer/ManualHoursModal'
 import { useTimer } from '@/features/timer/TimerProvider'
 import { supabase } from '@/lib/supabase'
+import { EnableNotifications } from '@/features/notifications/EnableNotifications'
 import type { WorkSession } from '@/lib/types'
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -550,6 +551,9 @@ export function Dashboard() {
 
   return (
     <div className="space-y-5 pb-40">
+      {/* Prompt to enable push notifications — only shown on dashboard */}
+      <EnableNotifications />
+
       {/* Goals bar — dynamic columns */}
       <GoalsBar />
 
