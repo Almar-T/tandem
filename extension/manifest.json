@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "Tandem Activity Tracker",
+  "version": "1.0.0",
+  "description": "Tracks active tab, keystrokes, and clicks for Tandem.",
+  "permissions": ["tabs", "storage", "alarms", "activeTab"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Tandem"
+  }
+}

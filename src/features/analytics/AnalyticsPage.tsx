@@ -1,11 +1,13 @@
 import { useMemo, useState } from 'react'
 import { format } from 'date-fns'
+import { Keyboard, MousePointer2, Globe } from 'lucide-react'
 import type { Profile, Task, WorkSession } from '@/lib/types'
 import { cn } from '@/lib/cn'
 import { useProfiles } from '@/features/profiles/useProfiles'
 import { useTasks } from '@/features/tasks/useTasks'
 import { useWorkSessions } from './useWorkSessions'
 import { dailyActive, filterRange, formatHours, totalsFor, type Range } from './analytics'
+import { useBrowserActivity, summariseByDomain, type BrowserActivityRow } from './useBrowserActivity'
 
 const USER_BAR = ['bg-indigo-500', 'bg-emerald-500']
 const USER_DOT = ['text-indigo-400', 'text-emerald-400']
@@ -21,6 +23,7 @@ export function AnalyticsPage() {
   const { data: profiles = [] } = useProfiles()
   const { data: tasks = [] } = useTasks()
   const [range, setRange] = useState<Range>(7)
+  const { data: browserRows = [] } = useBrowserActivity(range === 0 ? 0 : range)
 
   const scoped = useMemo(() => filterRange(sessions, range), [sessions, range])
   const userIds = profiles.map((p) => p.id)
@@ -101,6 +104,74 @@ export function AnalyticsPage() {
           </div>
         </div>
       )}
+
+      {/* Browser activity (from extension) */}
+      {profiles.length > 0 && (
+        <BrowserActivitySection rows={browserRows} profiles={profiles} />
+      )}
+    </div>
+  )
+}
+
+function BrowserActivitySection({
+  rows,
+  profiles,
+}: {
+  rows: BrowserActivityRow[]
+  profiles: Profile[]
+}) {
+  if (rows.length === 0) {
+    return (
+      <div className="rounded-2xl border border-dashed border-slate-800 bg-slate-900/30 p-5 text-center text-xs text-slate-500">
+        No browser activity yet — install the Tandem extension and sign in to start tracking.
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-3">
+      <h2 className="text-sm font-medium text-slate-300">Browser activity</h2>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {profiles.map((p, i) => {
+          const domains = summariseByDomain(rows, p.id).slice(0, 8)
+          const totalKeys = domains.reduce((s, d) => s + d.keystrokes, 0)
+          const totalClicks = domains.reduce((s, d) => s + d.clicks, 0)
+          const totalSec = domains.reduce((s, d) => s + d.active_sec, 0)
+          if (domains.length === 0) return null
+          return (
+            <div key={p.id} className="rounded-2xl border border-slate-800 bg-slate-900/50 p-4">
+              <div className="mb-2 flex items-center justify-between">
+                <span className={cn('text-sm font-medium', USER_DOT[i % USER_DOT.length])}>
+                  {p.display_name}
+                </span>
+                <span className="text-[11px] text-slate-500">{formatHours(totalSec)} tracked</span>
+              </div>
+              <div className="mb-3 flex gap-4 text-xs text-slate-400">
+                <span className="flex items-center gap-1">
+                  <Keyboard size={12} className="text-slate-500" />
+                  {totalKeys.toLocaleString()} keystrokes
+                </span>
+                <span className="flex items-center gap-1">
+                  <MousePointer2 size={12} className="text-slate-500" />
+                  {totalClicks.toLocaleString()} clicks
+                </span>
+              </div>
+              <div className="space-y-1.5">
+                {domains.map((d) => (
+                  <div key={d.domain} className="flex items-center gap-2">
+                    <Globe size={11} className="shrink-0 text-slate-600" />
+                    <span className="min-w-0 flex-1 truncate text-[11px] text-slate-300">{d.domain}</span>
+                    <span className="shrink-0 text-[10px] text-slate-500">{formatHours(d.active_sec)}</span>
+                    <span className="shrink-0 text-[10px] text-slate-600">
+                      {d.keystrokes > 0 && `${d.keystrokes}k`}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }
