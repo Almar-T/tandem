@@ -11,7 +11,6 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/auth/AuthProvider'
 import type { IdleReason, Task } from '@/lib/types'
 
-// After this much input-free time we pause tracking and ask what's up.
 const IDLE_THRESHOLD_SEC = 120
 
 interface TimerCtx {
@@ -34,38 +33,68 @@ export function TimerProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth()
   const qc = useQueryClient()
 
-  const [task, setTask] = useState<Task | null>(null)
-  const [running, setRunning] = useState(false)
-  const [activeSec, setActiveSec] = useState(0)
-  const [explainedSec, setExplainedSec] = useState(0)
+  const [task, setTask]                   = useState<Task | null>(null)
+  const [running, setRunning]             = useState(false)
+  const [activeSec, setActiveSec]         = useState(0)
+  const [explainedSec, setExplainedSec]   = useState(0)
   const [unexplainedSec, setUnexplainedSec] = useState(0)
   const [pendingIdleSec, setPendingIdleSec] = useState(0)
-  const [idlePrompt, setIdlePrompt] = useState(false)
+  const [idlePrompt, setIdlePrompt]       = useState(false)
 
-  // Refs mirror state so the activity listener / interval / stop() read fresh values.
-  const sessionIdRef = useRef<string | null>(null)
-  const lastActivityRef = useRef<number>(Date.now())
-  const idlePromptRef = useRef(false)
-  const pendingRef = useRef(0)
-  const activeRef = useRef(0)
-  const explainedRef = useRef(0)
-  const unexplainedRef = useRef(0)
-  const reasonRef = useRef<IdleReason | null>(null)
+  const sessionIdRef       = useRef<string | null>(null)
+  const idlePromptRef      = useRef(false)
+  const reasonRef          = useRef<IdleReason | null>(null)
+  const lastActivityRef    = useRef(Date.now())
 
-  useEffect(() => void (idlePromptRef.current = idlePrompt), [idlePrompt])
-  useEffect(() => void (pendingRef.current = pendingIdleSec), [pendingIdleSec])
-  useEffect(() => void (activeRef.current = activeSec), [activeSec])
-  useEffect(() => void (explainedRef.current = explainedSec), [explainedSec])
-  useEffect(() => void (unexplainedRef.current = unexplainedSec), [unexplainedSec])
+  // Timestamp-based accumulators — immune to interval throttling.
+  // Time is always computed as (Date.now() - startTimestamp), so a slow
+  // interval only affects display refresh rate, never accuracy.
+  const activeAccumRef        = useRef(0)              // completed active seconds
+  const activeStartRef        = useRef<number | null>(null) // ms when current active stretch began
+  const idlePromptStartRef    = useRef<number | null>(null) // ms when idle prompt appeared
+  const explainedAccumRef     = useRef(0)
+  const unexplainedAccumRef   = useRef(0)
 
-  // Track user input. Resuming activity during an idle prompt marks that gap unexplained.
+  // ── Helpers (read refs, never stale) ────────────────────────────────────
+
+  function calcActiveSec(): number {
+    return activeAccumRef.current + (
+      activeStartRef.current !== null
+        ? Math.floor((Date.now() - activeStartRef.current) / 1000)
+        : 0
+    )
+  }
+
+  function calcPendingIdleSec(): number {
+    return idlePromptStartRef.current !== null
+      ? Math.floor((Date.now() - idlePromptStartRef.current) / 1000)
+      : 0
+  }
+
+  // Commit current active stretch to accumulator, up to a specific wall-clock time.
+  function commitActiveAt(atMs: number) {
+    if (activeStartRef.current !== null) {
+      activeAccumRef.current += Math.floor((atMs - activeStartRef.current) / 1000)
+      activeStartRef.current = null
+    }
+  }
+
+  // ── Input activity listener ──────────────────────────────────────────────
+
   useEffect(() => {
     function onActivity() {
       lastActivityRef.current = Date.now()
       if (idlePromptRef.current) {
-        setUnexplainedSec((s) => s + pendingRef.current)
-        setPendingIdleSec(0)
+        // User came back while idle prompt was showing — mark as unexplained.
+        const pending = calcPendingIdleSec()
+        unexplainedAccumRef.current += pending
+        setUnexplainedSec(unexplainedAccumRef.current)
+        idlePromptStartRef.current = null
+        idlePromptRef.current = false
         setIdlePrompt(false)
+        setPendingIdleSec(0)
+        // Begin fresh active stretch.
+        activeStartRef.current = Date.now()
       }
     }
     const events = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart']
@@ -73,24 +102,46 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     return () => events.forEach((e) => window.removeEventListener(e, onActivity))
   }, [])
 
-  // One tick per second while running.
+  // ── Ticker ───────────────────────────────────────────────────────────────
+  // Fires ~every second but may be throttled in background to once per minute.
+  // All time values derive from Date.now() so accuracy is preserved regardless.
+
   useEffect(() => {
     if (!running) return
     const id = setInterval(() => {
-      const since = Date.now() - lastActivityRef.current
+      const now = Date.now()
+
       if (idlePromptRef.current) {
-        setPendingIdleSec((s) => s + 1)
-      } else if (since >= IDLE_THRESHOLD_SEC * 1000) {
+        // Idle prompt is showing — just refresh the display counter.
+        setPendingIdleSec(calcPendingIdleSec())
+        return
+      }
+
+      const sinceActivity = now - lastActivityRef.current
+
+      if (sinceActivity >= IDLE_THRESHOLD_SEC * 1000) {
+        // Crossed the idle threshold — commit active time up to last activity.
+        commitActiveAt(lastActivityRef.current)
+        if (!idlePromptStartRef.current) {
+          idlePromptStartRef.current = lastActivityRef.current + IDLE_THRESHOLD_SEC * 1000
+        }
+        setActiveSec(activeAccumRef.current)
+        setPendingIdleSec(calcPendingIdleSec())
+        idlePromptRef.current = true
         setIdlePrompt(true)
-        setPendingIdleSec(0)
       } else {
-        setActiveSec((s) => s + 1)
+        // Actively working.
+        if (activeStartRef.current === null) {
+          activeStartRef.current = now
+        }
+        setActiveSec(calcActiveSec())
       }
     }, 1000)
     return () => clearInterval(id)
   }, [running])
 
-  // task is optional — a one-click "general work" session has no task attached.
+  // ── Public actions ───────────────────────────────────────────────────────
+
   async function start(next?: Task | null) {
     if (sessionIdRef.current) await stop()
     const { data } = await supabase
@@ -100,15 +151,24 @@ export function TimerProvider({ children }: { children: ReactNode }) {
       .single()
     sessionIdRef.current = data?.id ?? null
     setTask(next ?? null)
+
+    // Reset all accumulators.
+    activeAccumRef.current      = 0
+    activeStartRef.current      = Date.now()
+    idlePromptStartRef.current  = null
+    explainedAccumRef.current   = 0
+    unexplainedAccumRef.current = 0
+    reasonRef.current           = null
+    lastActivityRef.current     = Date.now()
+    idlePromptRef.current       = false
+
     setActiveSec(0)
     setExplainedSec(0)
     setUnexplainedSec(0)
     setPendingIdleSec(0)
-    reasonRef.current = null
-    lastActivityRef.current = Date.now()
     setIdlePrompt(false)
     setRunning(true)
-    // Nudge the task into "in progress" if it hadn't started.
+
     if (next) {
       await supabase
         .from('tasks')
@@ -120,40 +180,54 @@ export function TimerProvider({ children }: { children: ReactNode }) {
   }
 
   async function stop() {
+    const wasIdle = idlePromptRef.current
     setRunning(false)
     setIdlePrompt(false)
+    idlePromptRef.current = false
     const id = sessionIdRef.current
     sessionIdRef.current = null
+
     if (id) {
-      const unexplained = unexplainedRef.current + (idlePromptRef.current ? pendingRef.current : 0)
+      commitActiveAt(Date.now())
+      const unexplained = unexplainedAccumRef.current + (wasIdle ? calcPendingIdleSec() : 0)
       await supabase
         .from('work_sessions')
         .update({
           ended_at: new Date().toISOString(),
-          active_sec: activeRef.current,
-          idle_explained_sec: explainedRef.current,
+          active_sec: activeAccumRef.current,
+          idle_explained_sec: explainedAccumRef.current,
           idle_unexplained_sec: unexplained,
           idle_reason: reasonRef.current,
         })
         .eq('id', id)
-      qc.invalidateQueries({ queryKey: ['tasks'] }) // actual_min updated by the rollup trigger
+      qc.invalidateQueries({ queryKey: ['tasks'] })
     }
     setTask(null)
   }
 
   function explainIdle(reason: IdleReason) {
-    setExplainedSec((s) => s + pendingRef.current)
+    const pending = calcPendingIdleSec()
+    explainedAccumRef.current += pending
     reasonRef.current = reason
+    idlePromptStartRef.current = null
+    idlePromptRef.current = false
     setPendingIdleSec(0)
+    setExplainedSec(explainedAccumRef.current)
     setIdlePrompt(false)
     lastActivityRef.current = Date.now()
+    activeStartRef.current  = Date.now()
   }
 
   function dismissIdle() {
-    setUnexplainedSec((s) => s + pendingRef.current)
+    const pending = calcPendingIdleSec()
+    unexplainedAccumRef.current += pending
+    idlePromptStartRef.current = null
+    idlePromptRef.current = false
     setPendingIdleSec(0)
+    setUnexplainedSec(unexplainedAccumRef.current)
     setIdlePrompt(false)
     lastActivityRef.current = Date.now()
+    activeStartRef.current  = Date.now()
   }
 
   return (
