@@ -288,13 +288,19 @@ function UserSection({
             return (
               <div
                 key={day.toISOString()}
-                className="flex flex-1 flex-col items-center justify-end gap-0.5"
+                className="group relative flex flex-1 flex-col items-center justify-end gap-0.5"
                 style={{ minWidth: chartDays.length > 14 ? '16px' : undefined }}
               >
+                {total > 0 && (
+                  <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1.5 hidden -translate-x-1/2 group-hover:block">
+                    <div className="whitespace-nowrap rounded-lg bg-hearth-green px-2 py-1 text-[10px] font-medium text-hearth-cream shadow-lg">
+                      {format(day, 'EEE MMM d')} · {formatHours(total)}
+                    </div>
+                  </div>
+                )}
                 <div
                   className="w-full overflow-hidden rounded-t-sm"
                   style={{ height: `${barH}px` }}
-                  title={`${format(day, 'EEE MMM d')}: ${formatHours(active)} active, ${formatHours(explained)} explained, ${formatHours(unexplained)} idle`}
                 >
                   <div style={{ height: `${(active      / (total || 1)) * 100}%` }} className="w-full bg-productive" />
                   <div style={{ height: `${(explained   / (total || 1)) * 100}%` }} className="w-full bg-explained" />

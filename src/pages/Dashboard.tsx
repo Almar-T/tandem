@@ -423,7 +423,14 @@ function DashboardAnalytics() {
                   const total = active + explained + unexplained
                   const barH = Math.max((total / maxSec) * 96, total > 0 ? 3 : 0)
                   return (
-                    <div key={day.toISOString()} className="flex flex-1 flex-col items-center justify-end gap-1">
+                    <div key={day.toISOString()} className="group relative flex flex-1 flex-col items-center justify-end gap-1">
+                      {total > 0 && (
+                        <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1.5 hidden -translate-x-1/2 group-hover:block">
+                          <div className="whitespace-nowrap rounded-lg bg-hearth-green px-2 py-1 text-[10px] font-medium text-hearth-cream shadow-lg">
+                            {format(day, 'EEE')} · {formatHours(total)}
+                          </div>
+                        </div>
+                      )}
                       <div
                         className="w-full overflow-hidden rounded-t-sm"
                         style={{ height: `${barH}px` }}
