@@ -1,8 +1,7 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import { format, isSameDay, isAfter, startOfDay, subDays, eachDayOfInterval } from 'date-fns'
 import {
-  Send, Flame, Sun, Moon, Play, Square, PenLine, Check,
-  Plus, ChevronRight, Target,
+  Send, Flame, Sun, Moon, Play, Square, PenLine, Check, Plus, Target,
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '@/auth/AuthProvider'
@@ -61,15 +60,17 @@ function GoalsBar() {
   const active = goals.filter((g) => g.status === 'active')
   if (active.length === 0) return null
 
+  const cols = Math.min(Math.max(active.length, 1), 5)
+
   return (
-    <div className="flex gap-3 overflow-x-auto pb-1 scrollbar-none">
+    <div className="grid gap-3" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
       {active.map((g) => {
         const pct = goalProgress(g, tasks)
         return (
           <button
             key={g.id}
             onClick={() => navigate('/goals')}
-            className="glass animate-glow flex min-w-[200px] flex-col gap-2 rounded-2xl border-hearth-gold/30 p-4 text-left transition hover:scale-[1.02]"
+            className="glass animate-glow flex flex-col gap-2 rounded-2xl border-hearth-gold/30 p-4 text-left transition hover:scale-[1.02]"
           >
             <div className="flex items-center gap-2">
               <Target size={13} className="shrink-0 text-hearth-gold" />
@@ -95,19 +96,40 @@ function GoalsBar() {
           </button>
         )
       })}
-      <button
-        onClick={() => navigate('/goals')}
-        className="flex min-w-[48px] items-center justify-center rounded-2xl border border-hearth-border/60 bg-white/30 text-hearth-text/40 transition hover:bg-white/50 hover:text-hearth-gold"
-      >
-        <ChevronRight size={18} />
-      </button>
     </div>
   )
 }
 
-// ── Today's tasks ─────────────────────────────────────────────────────────────
+// ── Task brief (shown inside Heather panel) ───────────────────────────────────
 
-function TodayTasks({ onAdd }: { onAdd: () => void }) {
+function TaskLine({ task, dim = false }: {
+  task: { id: string; title: string; status: string; due_date: string | null }
+  dim?: boolean
+}) {
+  const done = task.status === 'completed'
+  return (
+    <div className={cn('flex items-center gap-3 px-4 py-2.5', dim && 'opacity-55')}>
+      <div className={cn(
+        'flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition',
+        done ? 'border-productive bg-productive' : 'border-hearth-border',
+      )}>
+        {done && <Check size={11} className="text-white" />}
+      </div>
+      <span className={cn('flex-1 truncate text-sm text-hearth-green', done && 'line-through opacity-50')}>
+        {task.title}
+      </span>
+      {task.due_date && (
+        <span className="shrink-0 text-[10px] text-hearth-text/40">
+          {isToday(task.due_date)
+            ? format(new Date(task.due_date), 'h:mm a')
+            : format(new Date(task.due_date), 'EEE d')}
+        </span>
+      )}
+    </div>
+  )
+}
+
+function TaskBrief({ onAdd }: { onAdd: () => void }) {
   const { data: tasks = [] } = useTasks()
   const navigate = useNavigate()
 
@@ -121,80 +143,56 @@ function TodayTasks({ onAdd }: { onAdd: () => void }) {
     .slice(0, 4)
 
   return (
-    <div className="glass flex flex-col gap-0 overflow-hidden rounded-2xl shadow-md">
-      {/* Header */}
-      <div className="flex items-center justify-between border-b border-hearth-border/40 px-5 py-4">
+    <div className="border-b border-hearth-border/30">
+      {/* Today header */}
+      <div className="flex items-center justify-between px-4 pt-3 pb-1">
         <div>
-          <h2 className="font-serif text-lg font-semibold text-hearth-green">Today</h2>
-          <p className="text-xs text-hearth-text/50">{format(new Date(), 'EEEE, MMMM d')}</p>
+          <span className="text-xs font-semibold text-hearth-green">{format(new Date(), 'EEEE, MMMM d')}</span>
+          {today.length > 0 && (
+            <span className="ml-2 text-[10px] text-hearth-text/40">
+              {today.filter((t) => t.status !== 'completed').length} remaining
+            </span>
+          )}
         </div>
         <button
           onClick={onAdd}
-          className="flex items-center gap-1.5 rounded-xl bg-hearth-green px-3 py-1.5 text-xs font-medium text-hearth-cream shadow-sm transition hover:bg-hearth-text"
+          className="flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] text-hearth-text/50 transition hover:bg-hearth-muted hover:text-hearth-green"
         >
-          <Plus size={13} /> Add task
+          <Plus size={11} /> Add task
         </button>
       </div>
 
-      {/* Today's tasks */}
-      <div className="flex-1 divide-y divide-hearth-border/30 overflow-y-auto">
-        {today.length === 0 ? (
-          <p className="px-5 py-8 text-center text-sm text-hearth-text/40">
-            No tasks due today — ask Heather to plan your day.
-          </p>
-        ) : (
-          today.map((t) => (
-            <TaskLine key={t.id} task={t} />
-          ))
-        )}
-      </div>
+      {today.length === 0 ? (
+        <p className="px-4 py-3 text-xs text-hearth-text/40">
+          No tasks due today — use the tabs below to plan your day.
+        </p>
+      ) : (
+        <div className="divide-y divide-hearth-border/20 pb-1">
+          {today.map((t) => <TaskLine key={t.id} task={t} />)}
+        </div>
+      )}
 
-      {/* Upcoming */}
       {upcoming.length > 0 && (
         <>
-          <div className="border-t border-hearth-border/40 px-5 py-2">
-            <span className="text-[10px] font-semibold uppercase tracking-widest text-hearth-text/40">
+          <div className="px-4 pt-2 pb-1">
+            <span className="text-[10px] font-semibold uppercase tracking-widest text-hearth-text/35">
               Upcoming
             </span>
           </div>
-          <div className="divide-y divide-hearth-border/20">
-            {upcoming.map((t) => (
-              <TaskLine key={t.id} task={t} dim />
-            ))}
+          <div className="divide-y divide-hearth-border/15 pb-1">
+            {upcoming.map((t) => <TaskLine key={t.id} task={t} dim />)}
           </div>
         </>
       )}
 
-      <div className="border-t border-hearth-border/40 px-5 py-3">
+      <div className="px-4 pb-2.5 pt-1">
         <button
           onClick={() => navigate('/tasks')}
-          className="text-xs text-hearth-text/50 transition hover:text-hearth-gold"
+          className="text-[11px] text-hearth-text/40 transition hover:text-hearth-gold"
         >
           View all tasks →
         </button>
       </div>
-    </div>
-  )
-}
-
-function TaskLine({ task, dim = false }: { task: { id: string; title: string; status: string; due_date: string | null }; dim?: boolean }) {
-  const done = task.status === 'completed'
-  return (
-    <div className={cn('flex items-center gap-3 px-5 py-3', dim && 'opacity-60')}>
-      <div className={cn(
-        'flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition',
-        done ? 'border-productive bg-productive' : 'border-hearth-border',
-      )}>
-        {done && <Check size={11} className="text-white" />}
-      </div>
-      <span className={cn('flex-1 truncate text-sm text-hearth-green', done && 'line-through opacity-50')}>
-        {task.title}
-      </span>
-      {task.due_date && (
-        <span className="shrink-0 text-[10px] text-hearth-text/40">
-          {isToday(task.due_date) ? format(new Date(task.due_date), 'h:mm a') : format(new Date(task.due_date), 'EEE d')}
-        </span>
-      )}
     </div>
   )
 }
@@ -253,24 +251,21 @@ function HeatherPanel({
   }
 
   return (
-    <div className="glass flex h-full min-h-[560px] flex-col overflow-hidden rounded-2xl shadow-md">
+    <div className="glass flex flex-col overflow-hidden rounded-2xl shadow-md">
       {/* Header */}
-      <div className="flex items-center gap-2.5 border-b border-hearth-border/40 bg-hearth-green px-5 py-4">
-        <Flame size={16} className="text-hearth-gold" />
-        <div>
-          <span className="font-serif text-base font-semibold text-hearth-cream">Heather</span>
-          <span className="ml-2 text-xs text-hearth-cream/50">your AI planner</span>
+      <div className="flex items-center justify-between border-b border-hearth-border/40 bg-hearth-green px-5 py-4">
+        <div className="flex items-center gap-2.5">
+          <Flame size={16} className="text-hearth-gold" />
+          <div>
+            <span className="font-serif text-base font-semibold text-hearth-cream">Heather</span>
+            <span className="ml-2 text-xs text-hearth-cream/50">your AI planner</span>
+          </div>
         </div>
+        <p className="font-serif text-sm text-hearth-cream/70">{word}, {name}!</p>
       </div>
 
-      {/* Greeting bubble */}
-      {messages.length <= 1 && (
-        <div className="border-b border-hearth-border/30 bg-hearth-green/5 px-5 py-4">
-          <p className="font-serif text-sm text-hearth-green">
-            {word}, {name}! What shall we focus on today?
-          </p>
-        </div>
-      )}
+      {/* Task brief (always shown) */}
+      <TaskBrief onAdd={onOpenTask} />
 
       {/* Quick-action tabs */}
       <div className="border-b border-hearth-border/30 px-4 pt-3 pb-0">
@@ -310,36 +305,44 @@ function HeatherPanel({
       </div>
 
       {/* Messages */}
-      <div className="flex-1 space-y-3 overflow-y-auto px-4 py-3">
-        {messages.slice(1).map((m, i) => (
-          <div key={i} className={cn('flex', m.role === 'user' ? 'justify-end' : 'justify-start')}>
-            <div className={cn(
-              'max-w-[90%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed',
-              m.role === 'user'
-                ? 'bg-hearth-green text-hearth-cream'
-                : 'border border-hearth-border/50 bg-white/80 text-hearth-green shadow-sm',
-            )}>
-              <div className="whitespace-pre-wrap">{m.content}</div>
-              {m.actions && m.actions.length > 0 && (
-                <div className="mt-2 space-y-1 border-t border-hearth-gold/20 pt-2 text-xs text-hearth-text/60">
-                  {m.actions.map((a, j) => (
-                    <div key={j} className="flex items-start gap-1">
-                      <span className="text-hearth-gold">✓</span>
-                      <span>{a.detail}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
+      {messages.slice(1).length > 0 && (
+        <div className="max-h-72 space-y-3 overflow-y-auto px-4 py-3">
+          {messages.slice(1).map((m, i) => (
+            <div key={i} className={cn('flex', m.role === 'user' ? 'justify-end' : 'justify-start')}>
+              <div className={cn(
+                'max-w-[90%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed',
+                m.role === 'user'
+                  ? 'bg-hearth-green text-hearth-cream'
+                  : 'border border-hearth-border/50 bg-white/80 text-hearth-green shadow-sm',
+              )}>
+                <div className="whitespace-pre-wrap">{m.content}</div>
+                {m.actions && m.actions.length > 0 && (
+                  <div className="mt-2 space-y-1 border-t border-hearth-gold/20 pt-2 text-xs text-hearth-text/60">
+                    {m.actions.map((a, j) => (
+                      <div key={j} className="flex items-start gap-1">
+                        <span className="text-hearth-gold">✓</span>
+                        <span>{a.detail}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        ))}
-        {loading && (
-          <div className="flex items-center gap-1.5 text-xs text-hearth-text/50">
-            <Flame size={12} className="animate-pulse text-hearth-gold" />
-            Heather is thinking…
-          </div>
-        )}
-      </div>
+          ))}
+          {loading && (
+            <div className="flex items-center gap-1.5 text-xs text-hearth-text/50">
+              <Flame size={12} className="animate-pulse text-hearth-gold" />
+              Heather is thinking…
+            </div>
+          )}
+        </div>
+      )}
+      {loading && messages.slice(1).length === 0 && (
+        <div className="flex items-center gap-1.5 px-4 py-3 text-xs text-hearth-text/50">
+          <Flame size={12} className="animate-pulse text-hearth-gold" />
+          Heather is thinking…
+        </div>
+      )}
 
       {/* Input */}
       <form
@@ -366,102 +369,71 @@ function HeatherPanel({
 
 // ── Inline weekly analytics ───────────────────────────────────────────────────
 
+const USER_COLORS = ['#1b2a1e', '#c2a76d']
+
 function DashboardAnalytics() {
   const { data: sessions = [] } = useWorkSessions()
   const { data: profiles = [] } = useProfiles()
 
   const week = useMemo(() => filterRange(sessions, 7), [sessions])
 
-  if (profiles.length === 0 || sessions.length === 0) return null
-
-  const COLORS = ['#1b2a1e', '#c2a76d'] // green for user 0, gold for user 1
+  if (profiles.length === 0) return null
 
   return (
-    <div className="glass rounded-2xl shadow-md overflow-hidden">
-      <div className="border-b border-hearth-border/40 px-5 py-4">
-        <h2 className="font-serif text-lg font-semibold text-hearth-green">This week</h2>
-        <p className="text-xs text-hearth-text/50">7-day productivity overview</p>
-      </div>
+    <div className="space-y-4">
+      <h2 className="font-serif text-lg font-semibold text-hearth-green">This week</h2>
 
-      {/* Per-user totals */}
-      <div className="grid grid-cols-2 divide-x divide-hearth-border/40">
-        {profiles.map((p, i) => {
-          const t = totalsFor(week, p.id)
-          const tracked = t.active + t.explained + t.unexplained || 1
-          return (
-            <div key={p.id} className="px-5 py-4">
-              <p className="mb-1 text-xs font-semibold uppercase tracking-widest" style={{ color: COLORS[i % 2] }}>
+      {profiles.map((p, i) => {
+        const t = totalsFor(week, p.id)
+        const breakdown = dailyBreakdown(week, p.id)
+        const maxSec = Math.max(1, ...breakdown.map((d) => d.active + d.explained + d.unexplained))
+
+        return (
+          <div key={p.id} className="glass overflow-hidden rounded-2xl shadow-md">
+            {/* Summary row */}
+            <div className="flex items-baseline gap-4 border-b border-hearth-border/40 px-5 py-4">
+              <p
+                className="font-serif text-sm font-semibold uppercase tracking-widest"
+                style={{ color: USER_COLORS[i % 2] }}
+              >
                 {p.display_name}
               </p>
               <p className="font-serif text-2xl font-bold text-hearth-green">{formatHours(t.active)}</p>
-              <p className="mb-3 text-xs text-hearth-text/50">productive · {t.sessions} sessions</p>
-              <div className="flex h-2 overflow-hidden rounded-full bg-hearth-border/40">
-                <div className="bg-productive" style={{ width: `${(t.active / tracked) * 100}%` }} />
-                <div className="bg-explained" style={{ width: `${(t.explained / tracked) * 100}%` }} />
-                <div className="bg-unexplained" style={{ width: `${(t.unexplained / tracked) * 100}%` }} />
-              </div>
-              <div className="mt-1.5 flex gap-3 text-[10px] text-hearth-text/50">
-                <span>🟢 {formatHours(t.active)}</span>
-                <span>🟡 {formatHours(t.explained)}</span>
-                <span>🔴 {formatHours(t.unexplained)}</span>
+              <p className="text-xs text-hearth-text/50">productive · {t.sessions} sessions</p>
+              <div className="ml-auto flex gap-3 text-[11px] text-hearth-text/50">
+                <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-sm bg-productive" /> {formatHours(t.active)}</span>
+                <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-sm bg-explained" /> {formatHours(t.explained)}</span>
+                <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-sm bg-unexplained" /> {formatHours(t.unexplained)}</span>
               </div>
             </div>
-          )
-        })}
-      </div>
 
-      {/* 7-day bar chart */}
-      <div className="border-t border-hearth-border/40 px-5 py-4">
-        <p className="mb-3 text-[11px] font-medium uppercase tracking-widest text-hearth-text/40">
-          Daily comparison
-        </p>
-        <div className="flex h-28 items-end gap-1.5">
-          {profiles[0] && dailyBreakdown(week, profiles[0].id).map(({ day, active, explained, unexplained }, di) => {
-            const user1 = { active, explained, unexplained }
-            const user2Breakdown = profiles[1] ? dailyBreakdown(week, profiles[1].id)[di] : null
-            const maxSec = Math.max(
-              1,
-              ...profiles[0] ? dailyBreakdown(week, profiles[0].id).map(d => d.active + d.explained + d.unexplained) : [],
-              ...profiles[1] ? dailyBreakdown(week, profiles[1].id).map(d => d.active + d.explained + d.unexplained) : [],
-            )
-            const total1 = user1.active + user1.explained + user1.unexplained
-            const total2 = user2Breakdown ? user2Breakdown.active + user2Breakdown.explained + user2Breakdown.unexplained : 0
-            const h1 = (total1 / maxSec) * 100
-            const h2 = (total2 / maxSec) * 100
-
-            return (
-              <div key={day.toISOString()} className="flex flex-1 flex-col items-center gap-1">
-                <div className="flex h-full w-full items-end justify-center gap-0.5">
-                  {/* User 1 bar */}
-                  <div className="w-3 overflow-hidden rounded-t-sm" style={{ height: `${h1}%` }}>
-                    <div style={{ height: `${(user1.active / (total1 || 1)) * 100}%` }} className="bg-productive w-full" />
-                    <div style={{ height: `${(user1.explained / (total1 || 1)) * 100}%` }} className="bg-explained w-full" />
-                    <div style={{ height: `${(user1.unexplained / (total1 || 1)) * 100}%` }} className="bg-unexplained w-full" />
-                  </div>
-                  {/* User 2 bar */}
-                  {user2Breakdown && (
-                    <div className="w-3 overflow-hidden rounded-t-sm" style={{ height: `${h2}%` }}>
-                      <div style={{ height: `${(user2Breakdown.active / (total2 || 1)) * 100}%` }} className="bg-productive w-full opacity-60" />
-                      <div style={{ height: `${(user2Breakdown.explained / (total2 || 1)) * 100}%` }} className="bg-explained w-full opacity-60" />
-                      <div style={{ height: `${(user2Breakdown.unexplained / (total2 || 1)) * 100}%` }} className="bg-unexplained w-full opacity-60" />
+            {/* Stacked bar chart */}
+            <div className="px-5 py-4">
+              <div className="flex h-28 items-end gap-1.5">
+                {breakdown.map(({ day, active, explained, unexplained }) => {
+                  const total = active + explained + unexplained
+                  const h = (total / maxSec) * 100
+                  return (
+                    <div key={day.toISOString()} className="flex flex-1 flex-col items-center gap-1">
+                      <div className="flex h-full w-full items-end">
+                        <div
+                          className="w-full overflow-hidden rounded-t-sm"
+                          style={{ height: `${Math.max(h, total > 0 ? 4 : 0)}%` }}
+                        >
+                          <div style={{ height: `${(active      / (total || 1)) * 100}%` }} className="w-full bg-productive" />
+                          <div style={{ height: `${(explained   / (total || 1)) * 100}%` }} className="w-full bg-explained" />
+                          <div style={{ height: `${(unexplained / (total || 1)) * 100}%` }} className="w-full bg-unexplained" />
+                        </div>
+                      </div>
+                      <span className="text-[9px] text-hearth-text/40">{format(day, 'EEEEE')}</span>
                     </div>
-                  )}
-                </div>
-                <span className="text-[9px] text-hearth-text/40">{format(day, 'EEEEE')}</span>
+                  )
+                })}
               </div>
-            )
-          })}
-        </div>
-        <div className="mt-3 flex gap-4 text-[10px] text-hearth-text/50">
-          {profiles.map((p, i) => (
-            <span key={p.id} className="flex items-center gap-1">
-              <span className="inline-block h-2 w-2 rounded-sm" style={{ background: COLORS[i % 2], opacity: i === 1 ? 0.6 : 1 }} />
-              {p.display_name}
-            </span>
-          ))}
-          <span className="ml-auto">🟢 active · 🟡 explained · 🔴 idle</span>
-        </div>
-      </div>
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -572,16 +544,17 @@ export function Dashboard() {
 
   return (
     <div className="space-y-5 pb-40">
-      {/* Goals bar */}
+      {/* Goals bar — dynamic columns */}
       <GoalsBar />
 
-      {/* Main two-column grid */}
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[1fr_380px]">
-        <TodayTasks onAdd={() => ed.openNew()} />
-        <HeatherPanel name={name} onOpenTask={() => ed.openNew()} onOpenGoal={() => setGoalEditorOpen(true)} />
-      </div>
+      {/* Heather panel — full width */}
+      <HeatherPanel
+        name={name}
+        onOpenTask={() => ed.openNew()}
+        onOpenGoal={() => setGoalEditorOpen(true)}
+      />
 
-      {/* Inline analytics */}
+      {/* Inline per-user analytics */}
       <DashboardAnalytics />
 
       {/* Modals */}
@@ -589,12 +562,10 @@ export function Dashboard() {
       <GoalEditor open={goalEditorOpen} onClose={() => setGoalEditorOpen(false)} goal={null} />
       <ManualHoursModal open={logOpen} onClose={() => setLogOpen(false)} />
 
-      {/* End-day confirm */}
       {endDayConfirm && (
         <EndDayConfirm onConfirm={confirmEndDay} onCancel={() => setEndDayConfirm(false)} />
       )}
 
-      {/* Bottom action cluster */}
       <BottomCluster onLogHours={() => setLogOpen(true)} onEndDay={() => setEndDayConfirm(true)} />
     </div>
   )

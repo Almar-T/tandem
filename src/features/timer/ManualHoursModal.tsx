@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from 'react'
+import { format } from 'date-fns'
 import { useQueryClient } from '@tanstack/react-query'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
@@ -18,6 +19,8 @@ export function ManualHoursModal({ open, onClose }: Props) {
 
   const [hours, setHours] = useState('')
   const [minutes, setMinutes] = useState('')
+  const [date, setDate] = useState(() => format(new Date(), 'yyyy-MM-dd'))
+  const [startTime, setStartTime] = useState(() => format(new Date(), 'HH:mm'))
   const [note, setNote] = useState('')
   const [taskId, setTaskId] = useState('')
   const [busy, setBusy] = useState(false)
@@ -30,13 +33,15 @@ export function ManualHoursModal({ open, onClose }: Props) {
     if (totalSec <= 0 || !note.trim()) return
     setBusy(true)
     setError(null)
-    const now = new Date()
-    const startedAt = new Date(now.getTime() - totalSec * 1000)
+
+    const startedAt = new Date(`${date}T${startTime}:00`)
+    const endedAt = new Date(startedAt.getTime() + totalSec * 1000)
+
     const { error: err } = await supabase.from('work_sessions').insert({
       user_id: user?.id,
       task_id: taskId || null,
       started_at: startedAt.toISOString(),
-      ended_at: now.toISOString(),
+      ended_at: endedAt.toISOString(),
       active_sec: 0,
       idle_explained_sec: totalSec,
       idle_unexplained_sec: 0,
@@ -48,6 +53,8 @@ export function ManualHoursModal({ open, onClose }: Props) {
     qc.invalidateQueries({ queryKey: ['work_sessions'] })
     setHours('')
     setMinutes('')
+    setDate(format(new Date(), 'yyyy-MM-dd'))
+    setStartTime(format(new Date(), 'HH:mm'))
     setNote('')
     setTaskId('')
     onClose()
@@ -59,12 +66,35 @@ export function ManualHoursModal({ open, onClose }: Props) {
     <Modal open={open} onClose={onClose} title="Log manual hours">
       <form onSubmit={onSubmit} className="space-y-4">
         <p className="text-xs text-hearth-text/70">
-          Time entered here is logged as explained time (shown in yellow).
-          Give a clear description so it counts toward your weekly total.
+          Time entered here is logged as explained time (shown in yellow) and placed on the correct day in your bar graph.
         </p>
 
+        {/* Date + start time row */}
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="mb-1 block text-xs font-medium text-hearth-text">Date</label>
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              max={format(new Date(), 'yyyy-MM-dd')}
+              className="w-full rounded-lg border border-hearth-border bg-hearth-cream px-3 py-2 text-sm text-hearth-green outline-none focus:border-hearth-gold focus:ring-1 focus:ring-hearth-gold/30"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs font-medium text-hearth-text">Start time</label>
+            <input
+              type="time"
+              value={startTime}
+              onChange={(e) => setStartTime(e.target.value)}
+              className="w-full rounded-lg border border-hearth-border bg-hearth-cream px-3 py-2 text-sm text-hearth-green outline-none focus:border-hearth-gold focus:ring-1 focus:ring-hearth-gold/30"
+            />
+          </div>
+        </div>
+
+        {/* Duration */}
         <div>
-          <label className="block text-xs font-medium text-hearth-text mb-1">Duration</label>
+          <label className="mb-1 block text-xs font-medium text-hearth-text">Duration</label>
           <div className="flex items-center gap-2">
             <input
               type="number"
@@ -93,7 +123,7 @@ export function ManualHoursModal({ open, onClose }: Props) {
           <span className="text-xs font-medium text-hearth-text">
             What were you doing?{' '}
             <span className={note.trim().length > 0 && !strongEnough ? 'text-hearth-gold' : 'text-hearth-text/50'}>
-              (10+ chars for it to count as explained)
+              (10+ chars to count as explained)
             </span>
           </span>
           <textarea
