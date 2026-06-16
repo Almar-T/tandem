@@ -104,12 +104,65 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     return () => events.forEach((e) => window.removeEventListener(e, onActivity))
   }, [])
 
+  // ── Tauri companion heartbeat ────────────────────────────────────────────
+  // The Tauri desktop tracker writes a desktop_activity row every ~60 s
+  // (only while the HearthHall timer is running). Each insert proves the user
+  // is working on the computer. We use that as an activity signal so the web
+  // timer never falsely idles while the user is in Pages, Word, etc.
+
+  useEffect(() => {
+    if (!running || !user) return
+    const channel = supabase
+      .channel('tauri-heartbeat')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'desktop_activity',
+          filter: `user_id=eq.${user.id}`,
+        },
+        () => {
+          const now = Date.now()
+          lastActivityRef.current = now
+
+          // If the active stretch was frozen (we're in background), resume it
+          // from when we originally went hidden so the full gap counts as work.
+          if (appHiddenRef.current && activeStartRef.current === null) {
+            activeStartRef.current = hiddenAtRef.current ?? now
+          }
+          // Slide the "hidden since" reference forward so visibilitychange
+          // only sees the gap since the last heartbeat, not the full absence.
+          if (appHiddenRef.current) {
+            hiddenAtRef.current = now
+          }
+
+          // Cancel any idle prompt — Tauri confirms the user was working.
+          if (idlePromptRef.current) {
+            const pending = calcPendingIdleSec()
+            activeAccumRef.current += pending
+            idlePromptStartRef.current = null
+            idlePromptRef.current = false
+            setIdlePrompt(false)
+            setPendingIdleSec(0)
+            activeStartRef.current = now
+          }
+
+          setActiveSec(calcActiveSec())
+        },
+      )
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [running, user])
+
   // ── Visibility listener ─────────────────────────────────────────────────
-  // On hide: freeze the active stretch so background time isn't auto-counted.
+  // On hide: freeze the active stretch so background time isn't auto-counted
+  // unless/until the Tauri heartbeat resumes it.
   // On show:
-  //   • Short absence (< IDLE_THRESHOLD): resume as active — just a quick switch.
-  //   • Long absence (≥ IDLE_THRESHOLD): show the idle prompt so the user can
-  //     classify that time as work, break, etc. Same flow as normal idle.
+  //   • Small gap (< IDLE_THRESHOLD, or Tauri kept updating hiddenAtRef):
+  //     resume as active — just a brief switch.
+  //   • Large gap with no Tauri activity: show idle prompt so the user can
+  //     classify the time as work, break, etc.
 
   useEffect(() => {
     if (!running) return
@@ -127,11 +180,14 @@ export function TimerProvider({ children }: { children: ReactNode }) {
         hiddenAtRef.current = null
 
         if (awayMs < IDLE_THRESHOLD_SEC * 1000) {
-          // Brief switch — treat the gap as active and keep going.
-          activeStartRef.current = now
+          // Short gap (or Tauri heartbeats have been keeping hiddenAtRef recent)
+          // — resume the active stretch if it isn't already running.
+          if (activeStartRef.current === null) {
+            activeStartRef.current = now
+          }
         } else if (!idlePromptRef.current) {
-          // Long absence — trigger the idle prompt exactly as if the user
-          // had been sitting idle at the keyboard.
+          // Long gap with no Tauri activity — ask what they were doing.
+          if (activeStartRef.current !== null) commitActiveAt(now)
           idlePromptStartRef.current = hiddenAt + IDLE_THRESHOLD_SEC * 1000
           idlePromptRef.current = true
           setIdlePrompt(true)
