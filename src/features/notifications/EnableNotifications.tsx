@@ -1,20 +1,28 @@
 import { useEffect, useState } from 'react'
-import { Bell } from 'lucide-react'
+import { Bell, X } from 'lucide-react'
 import { useAuth } from '@/auth/AuthProvider'
 import { enablePush, isPushEnabled, pushSupported } from './push'
 
-/** Dashboard banner prompting the user to turn on push notifications. Hides once on. */
+const DISMISSED_KEY = 'hearth-push-dismissed'
+
 export function EnableNotifications() {
   const { user } = useAuth()
-  const [enabled, setEnabled] = useState(true) // assume on until checked, to avoid a flash
+  const [visible, setVisible] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    isPushEnabled().then(setEnabled)
+    if (!pushSupported()) return
+    if (localStorage.getItem(DISMISSED_KEY)) return
+    isPushEnabled().then((on) => { if (!on) setVisible(true) })
   }, [])
 
-  if (!pushSupported() || enabled) return null
+  if (!visible) return null
+
+  function dismiss() {
+    localStorage.setItem(DISMISSED_KEY, '1')
+    setVisible(false)
+  }
 
   async function turnOn() {
     if (!user) return
@@ -22,8 +30,12 @@ export function EnableNotifications() {
     setError(null)
     const res = await enablePush(user.id)
     setBusy(false)
-    if (res.ok) setEnabled(true)
-    else setError(res.error ?? 'Could not enable notifications.')
+    if (res.ok) {
+      localStorage.removeItem(DISMISSED_KEY)
+      setVisible(false)
+    } else {
+      setError(res.error ?? 'Could not enable notifications.')
+    }
   }
 
   return (
@@ -33,13 +45,22 @@ export function EnableNotifications() {
           <Bell size={16} className="text-hearth-gold" />
           Turn on reminders, overdue alerts &amp; daily summaries
         </div>
-        <button
-          onClick={turnOn}
-          disabled={busy}
-          className="rounded-lg bg-hearth-green px-3 py-1.5 text-sm font-medium text-hearth-cream transition hover:bg-hearth-text disabled:opacity-50"
-        >
-          {busy ? 'Enabling…' : 'Enable notifications'}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={turnOn}
+            disabled={busy}
+            className="rounded-lg bg-hearth-green px-3 py-1.5 text-sm font-medium text-hearth-cream transition hover:bg-hearth-text disabled:opacity-50"
+          >
+            {busy ? 'Enabling…' : 'Enable notifications'}
+          </button>
+          <button
+            onClick={dismiss}
+            className="rounded-lg p-1.5 text-hearth-text/40 transition hover:bg-hearth-border/40 hover:text-hearth-text"
+            title="Dismiss"
+          >
+            <X size={14} />
+          </button>
+        </div>
       </div>
       {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
     </div>
