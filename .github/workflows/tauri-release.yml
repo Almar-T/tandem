@@ -1,0 +1,77 @@
+name: Release Desktop App
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: write
+
+jobs:
+  # Step 1 — create the GitHub Release and upload the browser extension zip
+  create-release:
+    runs-on: ubuntu-latest
+    outputs:
+      release-id: ${{ steps.create.outputs.id }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Zip browser extension
+        run: zip -r hearth-hall-extension.zip extension/
+
+      - name: Create release + upload extension
+        id: create
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: HearthHall Desktop ${{ github.ref_name }}
+          body: |
+            ## HearthHall Desktop Companion + Browser Extension
+
+            ### Browser Extension (Chrome)
+            1. Download **hearth-hall-extension.zip** below and unzip it
+            2. Open Chrome → `chrome://extensions` → enable **Developer mode**
+            3. Click **Load unpacked** → select the unzipped `extension/` folder
+            4. Sign in with your HearthHall email in the extension popup
+
+            ### Desktop App (activity tracker)
+            | Platform | File to download |
+            |----------|-----------------|
+            | macOS (Apple Silicon + Intel) | `.dmg` |
+            | Windows | `.exe` installer |
+
+            Open the installer, follow the prompts. The app runs in your menu bar / system tray and tracks which app is active while your HearthHall timer is running.
+          files: hearth-hall-extension.zip
+          draft: false
+          prerelease: false
+
+  # Step 2 — build the Tauri app for macOS (universal) and Windows in parallel
+  build-tauri:
+    needs: create-release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            args: --target universal-apple-darwin
+            rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
+          - os: windows-latest
+            args: ''
+            rust-targets: ''
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-targets }}
+
+      - name: Build + upload to release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          releaseId: ${{ needs.create-release.outputs.release-id }}
+          projectPath: ./desktop
+          args: ${{ matrix.args }}

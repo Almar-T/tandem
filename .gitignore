@@ -21,6 +21,9 @@ supabase/.branches
 supabase/.temp
 supabase/.env
 
+# desktop / Tauri build artifacts
+desktop/src-tauri/target/
+
 # editor / os
 .vscode/*
 !.vscode/extensions.json

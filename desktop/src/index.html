@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Tandem</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0 }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 28px;
+      user-select: none;
+    }
+    .card { width: 100%; max-width: 340px; }
+    h1 { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
+    .sub { font-size: 12px; color: #64748b; margin-bottom: 20px; line-height: 1.5 }
+    label { display: block; font-size: 11px; color: #94a3b8; margin-bottom: 4px }
+    input {
+      display: block; width: 100%;
+      padding: 8px 10px;
+      background: #1e293b; border: 1px solid #334155; border-radius: 8px;
+      color: #e2e8f0; font-size: 13px; outline: none;
+      margin-bottom: 12px; transition: border-color .15s;
+    }
+    input:focus { border-color: #6366f1 }
+    .btn {
+      width: 100%; padding: 9px; border: none; border-radius: 8px;
+      font-size: 13px; font-weight: 500; cursor: pointer; transition: opacity .15s;
+    }
+    .btn:disabled { opacity: .5; cursor: default }
+    .primary { background: #6366f1; color: #fff }
+    .primary:not(:disabled):hover { background: #818cf8 }
+    .ghost { background: #1e293b; color: #94a3b8; border: 1px solid #334155; margin-top: 8px }
+    .ghost:not(:disabled):hover { color: #e2e8f0 }
+    .error { color: #f87171; font-size: 12px; margin-top: 10px }
+    .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #22c55e; margin-right: 6px }
+    .connected { font-size: 13px; color: #94a3b8; margin-bottom: 14px }
+    #login-view, #connected-view { display: none }
+  </style>
+</head>
+<body>
+<div class="card">
+  <h1>Tandem</h1>
+
+  <div id="login-view">
+    <p class="sub">Sign in to start tracking which apps you use while your timer is running.</p>
+    <label>Email</label>
+    <input id="email" type="email" autocomplete="email" placeholder="you@example.com" />
+    <label>Password</label>
+    <input id="password" type="password" autocomplete="current-password" placeholder="••••••••" />
+    <button id="signin-btn" class="btn primary">Connect to Tandem</button>
+    <div id="error" class="error" style="display:none"></div>
+  </div>
+
+  <div id="connected-view">
+    <p class="sub">Desktop activity is being tracked while your Tandem timer is running.</p>
+    <p class="connected"><span class="status-dot"></span><span id="user-email"></span></p>
+    <button id="signout-btn" class="btn ghost">Disconnect</button>
+  </div>
+</div>
+
+<script type="module">
+  const { invoke } = window.__TAURI__.core
+
+  const loginView     = document.getElementById('login-view')
+  const connectedView = document.getElementById('connected-view')
+  const emailInput    = document.getElementById('email')
+  const passwordInput = document.getElementById('password')
+  const signinBtn     = document.getElementById('signin-btn')
+  const signoutBtn    = document.getElementById('signout-btn')
+  const errorEl       = document.getElementById('error')
+  const userEmailEl   = document.getElementById('user-email')
+
+  async function init() {
+    const email = await invoke('cmd_get_status')
+    if (email) showConnected(email)
+    else showLogin()
+  }
+
+  function showLogin() {
+    loginView.style.display = 'block'
+    connectedView.style.display = 'none'
+    errorEl.style.display = 'none'
+  }
+
+  function showConnected(email) {
+    loginView.style.display = 'none'
+    connectedView.style.display = 'block'
+    userEmailEl.textContent = email
+  }
+
+  signinBtn.addEventListener('click', async () => {
+    const email = emailInput.value.trim()
+    const password = passwordInput.value
+    if (!email || !password) { showError('Email and password are required.'); return }
+    signinBtn.disabled = true
+    signinBtn.textContent = 'Connecting…'
+    errorEl.style.display = 'none'
+    try {
+      const result = await invoke('cmd_sign_in', { email, password })
+      showConnected(result)
+    } catch (e) {
+      showError(e)
+    } finally {
+      signinBtn.disabled = false
+      signinBtn.textContent = 'Connect to Tandem'
+    }
+  })
+
+  signoutBtn.addEventListener('click', async () => {
+    await invoke('cmd_sign_out')
+    showLogin()
+  })
+
+  function showError(msg) {
+    errorEl.textContent = msg
+    errorEl.style.display = 'block'
+  }
+
+  passwordInput.addEventListener('keydown', e => { if (e.key === 'Enter') signinBtn.click() })
+
+  init()
+</script>
+</body>
+</html>
