@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { useRef, useState, type FormEvent } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
-import { LayoutDashboard, ListTodo, Target, BarChart2, Menu, X, LogOut } from 'lucide-react'
+import { LayoutDashboard, ListTodo, Target, BarChart2, Menu, X, LogOut, Pencil } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useAuth } from '@/auth/AuthProvider'
 import { cn } from '@/lib/cn'
+import { supabase } from '@/lib/supabase'
 import { Assistant } from '@/features/assistant/Assistant'
 import { TimerBar } from '@/features/timer/TimerBar'
 import { useDailyCheckin } from '@/features/checkin/useDailyCheckin'
@@ -14,10 +16,59 @@ const NAV = [
   { to: '/analytics', label: 'Analytics', icon: BarChart2 },
 ]
 
+function DisplayNamePopover({ current, userId, onClose }: { current: string; userId: string; onClose: () => void }) {
+  const [value, setValue] = useState(current)
+  const [saving, setSaving] = useState(false)
+  const qc = useQueryClient()
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  async function save(e: FormEvent) {
+    e.preventDefault()
+    const trimmed = value.trim()
+    if (!trimmed || trimmed === current) { onClose(); return }
+    setSaving(true)
+    await Promise.all([
+      supabase.auth.updateUser({ data: { display_name: trimmed } }),
+      supabase.from('profiles').update({ display_name: trimmed }).eq('id', userId),
+    ])
+    qc.invalidateQueries({ queryKey: ['profiles'] })
+    setSaving(false)
+    onClose()
+    // Reload so auth user metadata refreshes in React state
+    window.location.reload()
+  }
+
+  return (
+    <div className="absolute right-0 top-full z-50 mt-2 w-64 animate-fade-up">
+      <div className="glass rounded-2xl p-4 shadow-xl">
+        <p className="mb-3 text-xs font-medium text-hearth-text/60">Change your display name</p>
+        <form onSubmit={save} className="flex gap-2">
+          <input
+            ref={inputRef}
+            autoFocus
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            placeholder="Your first name"
+            className="flex-1 rounded-xl border border-hearth-border/60 bg-white/70 px-3 py-2 text-sm text-hearth-green outline-none focus:border-hearth-gold focus:ring-1 focus:ring-hearth-gold/30"
+          />
+          <button
+            type="submit"
+            disabled={saving || !value.trim()}
+            className="rounded-xl bg-hearth-green px-3 py-2 text-xs font-medium text-hearth-cream shadow-sm transition hover:bg-hearth-text disabled:opacity-40"
+          >
+            {saving ? '…' : 'Save'}
+          </button>
+        </form>
+      </div>
+    </div>
+  )
+}
+
 export function AppShell() {
   const { user, signOut } = useAuth()
   const { pathname } = useLocation()
   const [menuOpen, setMenuOpen] = useState(false)
+  const [nameOpen, setNameOpen] = useState(false)
   const name = user?.user_metadata?.display_name ?? user?.email?.split('@')[0] ?? 'You'
   useDailyCheckin()
 
@@ -38,7 +89,23 @@ export function AppShell() {
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="hidden text-xs text-hearth-text/60 md:block">{name}</span>
+          {/* Clickable name → display name editor */}
+          <div className="relative hidden md:block">
+            <button
+              onClick={() => setNameOpen((v) => !v)}
+              className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs text-hearth-text/60 transition hover:bg-hearth-muted hover:text-hearth-green"
+            >
+              {name}
+              <Pencil size={11} className="opacity-50" />
+            </button>
+            {nameOpen && user && (
+              <DisplayNamePopover
+                current={name}
+                userId={user.id}
+                onClose={() => setNameOpen(false)}
+              />
+            )}
+          </div>
           <button
             onClick={signOut}
             className="rounded-lg p-2 text-hearth-text/50 transition hover:bg-hearth-muted hover:text-hearth-green"
