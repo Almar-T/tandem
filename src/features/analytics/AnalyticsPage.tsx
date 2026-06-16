@@ -9,6 +9,7 @@ import { useWorkSessions } from './useWorkSessions'
 import { dailyActive, filterRange, formatHours, totalsFor, type Range } from './analytics'
 import { useBrowserActivity, summariseByDomain, type BrowserActivityRow } from './useBrowserActivity'
 import { useDistractionEvents, type DistractionEvent } from './useDistractionEvents'
+import { useDesktopActivity, summariseByApp } from './useDesktopActivity'
 
 const USER_BAR = ['bg-indigo-500', 'bg-emerald-500']
 const USER_DOT = ['text-indigo-400', 'text-emerald-400']
@@ -26,6 +27,7 @@ export function AnalyticsPage() {
   const [range, setRange] = useState<Range>(7)
   const { data: browserRows = [] } = useBrowserActivity(range === 0 ? 0 : range)
   const { data: distractionEvents = [] } = useDistractionEvents(range === 0 ? 0 : range)
+  const { data: desktopRows = [] } = useDesktopActivity(range === 0 ? 0 : range)
 
   const scoped = useMemo(() => filterRange(sessions, range), [sessions, range])
   const userIds = profiles.map((p) => p.id)
@@ -116,10 +118,54 @@ export function AnalyticsPage() {
         />
       )}
 
+      {/* Desktop app activity (from Tauri companion) */}
+      {profiles.length > 0 && desktopRows.length > 0 && (
+        <DesktopActivitySection rows={desktopRows} profiles={profiles} />
+      )}
+
       {/* Distraction events */}
       {profiles.length > 0 && (
         <DistractionSection events={distractionEvents} profiles={profiles} />
       )}
+    </div>
+  )
+}
+
+function DesktopActivitySection({ rows, profiles }: { rows: import('./useDesktopActivity').DesktopActivityRow[]; profiles: Profile[] }) {
+  return (
+    <div className="space-y-3">
+      <h2 className="text-sm font-medium text-slate-300">Desktop apps</h2>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {profiles.map((p, i) => {
+          const apps = summariseByApp(rows, p.id).slice(0, 8)
+          const totalSec = apps.reduce((s, a) => s + a.active_sec, 0)
+          if (apps.length === 0) return null
+          return (
+            <div key={p.id} className="rounded-2xl border border-slate-800 bg-slate-900/50 p-4">
+              <div className="mb-3 flex items-center justify-between">
+                <span className={cn('text-sm font-medium', USER_DOT[i % USER_DOT.length])}>
+                  {p.display_name}
+                </span>
+                <span className="text-[11px] text-slate-500">{formatHours(totalSec)} tracked</span>
+              </div>
+              <div className="space-y-1.5">
+                {apps.map((a) => (
+                  <div key={a.app_name} className="flex items-center gap-2">
+                    <span className="min-w-0 flex-1 truncate text-[11px] text-slate-300">{a.app_name}</span>
+                    <div className="h-1 w-16 overflow-hidden rounded-full bg-slate-800">
+                      <div
+                        className={cn('h-full rounded-full', USER_BAR[i % USER_BAR.length])}
+                        style={{ width: `${(a.active_sec / (apps[0]?.active_sec || 1)) * 100}%` }}
+                      />
+                    </div>
+                    <span className="shrink-0 text-[10px] text-slate-500">{formatHours(a.active_sec)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }

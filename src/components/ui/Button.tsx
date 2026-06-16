@@ -1,13 +1,14 @@
 import type { ButtonHTMLAttributes } from 'react'
 import { cn } from '@/lib/cn'
 
-type Variant = 'primary' | 'subtle' | 'ghost' | 'danger'
+type Variant = 'primary' | 'subtle' | 'ghost' | 'danger' | 'gold'
 
 const VARIANTS: Record<Variant, string> = {
-  primary: 'bg-indigo-600 text-white hover:bg-indigo-500',
-  subtle: 'bg-slate-800 text-slate-100 hover:bg-slate-700',
-  ghost: 'text-slate-400 hover:bg-slate-800 hover:text-slate-200',
-  danger: 'text-red-400 hover:bg-red-950 hover:text-red-300',
+  primary: 'bg-hearth-green text-hearth-cream hover:bg-hearth-text',
+  gold:    'bg-hearth-gold text-hearth-green hover:opacity-90',
+  subtle:  'border border-hearth-border bg-hearth-muted text-hearth-green hover:bg-hearth-border',
+  ghost:   'text-hearth-text hover:bg-hearth-muted',
+  danger:  'text-red-700 hover:bg-red-50',
 }
 
 export function Button({

@@ -10,8 +10,8 @@ import { fromDatetimeLocal, toDatetimeLocal } from './util'
 import { useCreateTask, useUpdateTask } from './useTasks'
 
 const input =
-  'w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:border-slate-500'
-const labelCls = 'block space-y-1 text-xs font-medium text-slate-400'
+  'w-full rounded-lg border border-hearth-border bg-hearth-cream px-3 py-2 text-sm text-hearth-green outline-none focus:border-hearth-gold focus:ring-1 focus:ring-hearth-gold/30'
+const labelCls = 'block space-y-1 text-xs font-medium text-hearth-text'
 
 interface Props {
   open: boolean
@@ -191,16 +191,16 @@ export function TaskEditor({ open, onClose, task, defaultDue = null }: Props) {
           </label>
         </div>
 
-        <label className="flex items-center gap-2.5 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2.5">
+        <label className="flex items-center gap-2.5 rounded-lg border border-hearth-border bg-hearth-muted px-3 py-2.5">
           <input
             type="checkbox"
             checked={showOnCalendar}
             onChange={(e) => setShowOnCalendar(e.target.checked)}
-            className="h-4 w-4 accent-indigo-500"
+            className="h-4 w-4 accent-hearth-green"
           />
-          <span className="text-sm">
+          <span className="text-sm text-hearth-green">
             Show on calendar
-            <span className="ml-1 text-xs text-slate-500">— uses the due date as the event time</span>
+            <span className="ml-1 text-xs text-hearth-text/60">— uses the due date as the event time</span>
           </span>
         </label>
 

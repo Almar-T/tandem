@@ -47,8 +47,8 @@ export function TasksPage() {
     <div className="mx-auto max-w-4xl space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-semibold">Tasks</h1>
-          <p className="text-sm text-slate-500">
+          <h1 className="font-serif text-2xl font-semibold text-hearth-green">Tasks</h1>
+          <p className="text-sm text-hearth-text/60">
             {visible.length} of {tasks.length} {tasks.length === 1 ? 'task' : 'tasks'} · shared,
             live-synced
           </p>
@@ -65,15 +65,15 @@ export function TasksPage() {
         onChange={setFilters}
       />
 
-      <div className="rounded-2xl border border-slate-800 bg-slate-900/40">
-        {isLoading && <p className="p-6 text-sm text-slate-500">Loading tasks…</p>}
+      <div className="rounded-2xl border border-hearth-border bg-white/40">
+        {isLoading && <p className="p-6 text-sm text-hearth-text/50">Loading tasks…</p>}
         {isError && (
-          <p className="p-6 text-sm text-red-400">
+          <p className="p-6 text-sm text-red-600">
             Couldn't load tasks. Check your Supabase connection.
           </p>
         )}
         {!isLoading && !isError && visible.length === 0 && (
-          <div className="p-10 text-center text-sm text-slate-500">
+          <div className="p-10 text-center text-sm text-hearth-text/50">
             {tasks.length === 0 ? 'No tasks yet — create your first one.' : 'No tasks match these filters.'}
           </div>
         )}

@@ -8,8 +8,8 @@ import type { MilestoneDraft } from './api'
 import { useCreateGoal, useMilestones, useUpdateGoal } from './useGoals'
 
 const input =
-  'w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:border-slate-500'
-const labelCls = 'block space-y-1 text-xs font-medium text-slate-400'
+  'w-full rounded-lg border border-hearth-border bg-hearth-cream px-3 py-2 text-sm text-hearth-green outline-none focus:border-hearth-gold focus:ring-1 focus:ring-hearth-gold/30'
+const labelCls = 'block space-y-1 text-xs font-medium text-hearth-text'
 
 const GOAL_STATUSES: { value: GoalStatus; label: string }[] = [
   { value: 'active', label: 'Active' },
@@ -112,7 +112,7 @@ export function GoalEditor({
 
         {/* Milestones */}
         <div className="space-y-2">
-          <div className="text-xs font-medium text-slate-400">Milestones</div>
+          <div className="text-xs font-medium text-hearth-text">Milestones</div>
           {milestones.map((m, i) => (
             <div key={i} className="flex items-center gap-2">
               <input
@@ -126,7 +126,7 @@ export function GoalEditor({
               <button
                 type="button"
                 onClick={() => setMilestones((arr) => arr.filter((_, j) => j !== i))}
-                className="rounded-lg p-2 text-slate-500 hover:bg-slate-800 hover:text-slate-300"
+                className="rounded-lg p-2 text-hearth-text/50 hover:bg-hearth-muted hover:text-hearth-green"
               >
                 <X size={15} />
               </button>
@@ -135,7 +135,7 @@ export function GoalEditor({
           <button
             type="button"
             onClick={() => setMilestones((arr) => [...arr, { title: '', target_date: null, done: false }])}
-            className="inline-flex items-center gap-1 text-xs text-indigo-400 hover:text-indigo-300"
+            className="inline-flex items-center gap-1 text-xs text-hearth-gold hover:text-hearth-text"
           >
             <Plus size={14} /> Add milestone
           </button>

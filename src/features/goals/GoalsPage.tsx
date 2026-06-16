@@ -28,18 +28,18 @@ export function GoalsPage() {
   return (
     <div className="mx-auto max-w-4xl space-y-5">
       <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Goals</h1>
+        <h1 className="font-serif text-2xl font-semibold text-hearth-green">Goals</h1>
         <Button onClick={openNew}>
           <Plus size={16} /> New goal
         </Button>
       </div>
 
       {!isLoading && goals.length === 0 && (
-        <div className="rounded-2xl border border-dashed border-slate-800 bg-slate-900/30 p-10 text-center">
-          <Target className="mx-auto mb-2 text-slate-600" />
-          <p className="text-sm text-slate-400">No goals yet.</p>
-          <p className="mt-1 text-xs text-slate-500">
-            Create one, or ask the Planner: “Help me launch my business this month.”
+        <div className="rounded-2xl border border-dashed border-hearth-border bg-hearth-muted p-10 text-center">
+          <Target className="mx-auto mb-2 text-hearth-gold" />
+          <p className="text-sm text-hearth-text">No goals yet.</p>
+          <p className="mt-1 text-xs text-hearth-text">
+            Create one, or ask Vera to help you plan.
           </p>
         </div>
       )}
@@ -54,7 +54,7 @@ export function GoalsPage() {
 
       {other.length > 0 && (
         <div className="space-y-2">
-          <h2 className="text-sm font-medium text-slate-500">Archived</h2>
+          <h2 className="text-sm font-medium text-hearth-text">Archived</h2>
           <div className="grid gap-3 opacity-70 md:grid-cols-2">
             {other.map((g) => (
               <GoalCard key={g.id} goal={g} tasks={tasks} onEdit={openEdit} />

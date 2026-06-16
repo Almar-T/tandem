@@ -27,21 +27,21 @@ export function EnableNotifications() {
   }
 
   return (
-    <div className="rounded-2xl border border-slate-800 bg-slate-900/50 p-3">
+    <div className="rounded-2xl border border-hearth-border bg-hearth-muted p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2 text-sm text-slate-300">
-          <Bell size={16} className="text-indigo-400" />
-          Turn on reminders, overdue alerts & daily summaries
+        <div className="flex items-center gap-2 text-sm text-hearth-green">
+          <Bell size={16} className="text-hearth-gold" />
+          Turn on reminders, overdue alerts &amp; daily summaries
         </div>
         <button
           onClick={turnOn}
           disabled={busy}
-          className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium transition hover:bg-indigo-500 disabled:opacity-50"
+          className="rounded-lg bg-hearth-green px-3 py-1.5 text-sm font-medium text-hearth-cream transition hover:bg-hearth-text disabled:opacity-50"
         >
           {busy ? 'Enabling…' : 'Enable notifications'}
         </button>
       </div>
-      {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
+      {error && <p className="mt-2 text-xs text-red-600">{error}</p>}
     </div>
   )
 }

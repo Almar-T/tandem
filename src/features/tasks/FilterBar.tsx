@@ -19,7 +19,7 @@ export const EMPTY_FILTERS: Filters = {
 }
 
 const select =
-  'rounded-lg border border-slate-700 bg-slate-950 px-2.5 py-1.5 text-xs text-slate-200 outline-none focus:border-slate-500'
+  'rounded-lg border border-hearth-border bg-hearth-cream px-2.5 py-1.5 text-xs text-hearth-green outline-none focus:border-hearth-gold focus:ring-1 focus:ring-hearth-gold/30'
 
 interface Props {
   profiles: Profile[]
@@ -36,7 +36,7 @@ export function FilterBar({ profiles, categories, filters, onChange }: Props) {
   return (
     <div className="flex flex-wrap items-center gap-2">
       <div className="relative">
-        <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500" />
+        <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-hearth-text/50" />
         <input
           value={filters.search}
           onChange={(e) => set({ search: e.target.value })}
@@ -84,7 +84,7 @@ export function FilterBar({ profiles, categories, filters, onChange }: Props) {
       {active && (
         <button
           onClick={() => onChange(EMPTY_FILTERS)}
-          className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+          className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs text-hearth-text/60 hover:bg-hearth-muted hover:text-hearth-green"
         >
           <X size={13} /> Clear
         </button>

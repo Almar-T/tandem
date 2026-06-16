@@ -33,9 +33,10 @@ const hours = (sec: number) => Math.round((sec / 3600) * 10) / 10
 Deno.serve(async (req) => {
   try {
     // Gate the endpoint with a shared secret (set CRON_SECRET; cron/curl send it
-    // as the x-cron-secret header). Avoids JWT/key-format issues with the gateway.
+    // as the x-cron-secret header). Both the secret being set AND matching are
+    // required — an empty/missing secret is treated as misconfiguration, not bypass.
     const cronSecret = Deno.env.get('CRON_SECRET') ?? ''
-    if (cronSecret && req.headers.get('x-cron-secret') !== cronSecret) {
+    if (!cronSecret || req.headers.get('x-cron-secret') !== cronSecret) {
       return json({ error: 'unauthorized' }, 401)
     }
     if (!VAPID_PUBLIC || !VAPID_PRIVATE) {

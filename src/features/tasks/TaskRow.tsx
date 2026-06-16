@@ -32,15 +32,15 @@ export function TaskRow({ task, profiles, onEdit }: Props) {
   }
 
   return (
-    <div className="flex items-center gap-3 border-b border-slate-800/60 px-2 py-2.5 hover:bg-slate-900/40">
+    <div className="flex items-center gap-3 border-b border-hearth-border/60 px-2 py-2.5 hover:bg-hearth-muted/40">
       {/* Complete toggle */}
       <button
         onClick={toggleDone}
         className={cn(
           'grid h-5 w-5 shrink-0 place-items-center rounded-md border transition',
           done
-            ? 'border-green-600 bg-green-600 text-white'
-            : 'border-slate-600 text-transparent hover:border-slate-400',
+            ? 'border-productive bg-productive text-white'
+            : 'border-hearth-border text-transparent hover:border-hearth-gold',
         )}
         title={done ? 'Mark incomplete' : 'Mark complete'}
       >
@@ -49,7 +49,7 @@ export function TaskRow({ task, profiles, onEdit }: Props) {
 
       {/* Title + meta */}
       <button onClick={() => onEdit(task)} className="min-w-0 flex-1 text-left">
-        <div className={cn('truncate text-sm', done && 'text-slate-500 line-through')}>
+        <div className={cn('truncate text-sm text-hearth-green', done && 'text-hearth-text/40 line-through')}>
           {task.title}
         </div>
         <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[11px]">
@@ -60,27 +60,27 @@ export function TaskRow({ task, profiles, onEdit }: Props) {
             <span className={cn('rounded px-1.5 py-0.5', priority.badge)}>{priority.label}</span>
           )}
           {task.category && (
-            <span className="rounded bg-slate-800 px-1.5 py-0.5 text-slate-400">
+            <span className="rounded bg-hearth-muted px-1.5 py-0.5 text-hearth-text">
               {task.category}
             </span>
           )}
           {task.estimate_min ? (
-            <span className="text-slate-500">~{formatMinutes(task.estimate_min)}</span>
+            <span className="text-hearth-text/50">~{formatMinutes(task.estimate_min)}</span>
           ) : null}
           {task.due_date && (
-            <span className={cn(status === 'overdue' ? 'text-red-400' : 'text-slate-500')}>
+            <span className={cn(status === 'overdue' ? 'text-red-600' : 'text-hearth-text/50')}>
               {formatDue(task.due_date)}
             </span>
           )}
           {task.show_on_calendar && (
-            <CalendarDays size={12} className="text-indigo-400" aria-label="On calendar" />
+            <CalendarDays size={12} className="text-hearth-gold" aria-label="On calendar" />
           )}
         </div>
       </button>
 
       {/* Assignee avatar */}
       <div
-        className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-slate-700 text-xs font-medium text-slate-200"
+        className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-hearth-green text-xs font-medium text-hearth-cream"
         title={assignee?.display_name ?? 'Unassigned'}
       >
         {assignee ? initialOf(assignee.display_name) : '–'}
@@ -94,8 +94,8 @@ export function TaskRow({ task, profiles, onEdit }: Props) {
             className={cn(
               'rounded-lg p-1.5 transition',
               isTiming
-                ? 'text-productive hover:bg-slate-800'
-                : 'text-slate-500 hover:bg-slate-800 hover:text-slate-300',
+                ? 'text-productive hover:bg-hearth-muted'
+                : 'text-hearth-text/50 hover:bg-hearth-muted hover:text-hearth-green',
             )}
             title={isTiming ? 'Stop timer' : 'Start timer'}
           >
@@ -104,7 +104,7 @@ export function TaskRow({ task, profiles, onEdit }: Props) {
         )}
         <button
           onClick={() => onEdit(task)}
-          className="rounded-lg p-1.5 text-slate-500 transition hover:bg-slate-800 hover:text-slate-300"
+          className="rounded-lg p-1.5 text-hearth-text/50 transition hover:bg-hearth-muted hover:text-hearth-green"
           title="Edit"
         >
           <Pencil size={15} />
@@ -113,7 +113,7 @@ export function TaskRow({ task, profiles, onEdit }: Props) {
           onClick={() => {
             if (confirm(`Delete "${task.title}"?`)) remove.mutate(task.id)
           }}
-          className="rounded-lg p-1.5 text-slate-500 transition hover:bg-red-950 hover:text-red-400"
+          className="rounded-lg p-1.5 text-hearth-text/50 transition hover:bg-red-50 hover:text-red-600"
           title="Delete"
         >
           <Trash2 size={15} />
