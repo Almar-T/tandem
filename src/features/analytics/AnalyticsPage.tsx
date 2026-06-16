@@ -13,7 +13,7 @@ import { useWorkSessions } from './useWorkSessions'
 import { filterRange, formatHours, totalsFor, type Range } from './analytics'
 import { useBrowserActivity, summariseByDomain, type BrowserActivityRow } from './useBrowserActivity'
 import { useDistractionEvents, type DistractionEvent } from './useDistractionEvents'
-import { useDesktopActivity, summariseByApp } from './useDesktopActivity'
+import { useDesktopActivity, useTauriRunning, summariseByApp } from './useDesktopActivity'
 
 const USER_COLORS = ['#1b2a1e', '#c2a76d']
 
@@ -80,6 +80,7 @@ export function AnalyticsPage() {
   const { data: browserRows = [] } = useBrowserActivity(range)
   const { data: distractionEvents = [] } = useDistractionEvents(range)
   const { data: desktopRows = [] } = useDesktopActivity(range)
+  const { data: tauriRunning = false } = useTauriRunning()
 
   // Sessions filtered to the current view
   const scoped = useMemo(() => {
@@ -197,8 +198,8 @@ export function AnalyticsPage() {
       )}
 
       {/* Desktop app activity */}
-      {profiles.length > 0 && desktopRows.length > 0 && (
-        <DesktopActivitySection rows={desktopRows} profiles={profiles} />
+      {profiles.length > 0 && (desktopRows.length > 0 || tauriRunning) && (
+        <DesktopActivitySection rows={desktopRows} profiles={profiles} tauriRunning={tauriRunning} />
       )}
 
       {/* Distraction events */}
@@ -323,13 +324,26 @@ function UserSection({
 function DesktopActivitySection({
   rows,
   profiles,
+  tauriRunning,
 }: {
   rows: import('./useDesktopActivity').DesktopActivityRow[]
   profiles: Profile[]
+  tauriRunning: boolean
 }) {
   return (
     <div className="space-y-3">
-      <h2 className="font-serif text-lg font-semibold text-hearth-green">Desktop apps</h2>
+      <div className="flex items-center gap-2">
+        <h2 className="font-serif text-lg font-semibold text-hearth-green">Desktop apps</h2>
+        <span className={cn(
+          'flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium',
+          tauriRunning
+            ? 'bg-productive/10 text-productive'
+            : 'bg-hearth-muted text-hearth-text/50',
+        )}>
+          <span className={cn('h-1.5 w-1.5 rounded-full', tauriRunning ? 'animate-pulse bg-productive' : 'bg-hearth-border')} />
+          {tauriRunning ? 'tracking now' : 'app not running'}
+        </span>
+      </div>
       <div className="grid gap-3 sm:grid-cols-2">
         {profiles.map((p, i) => {
           const apps = summariseByApp(rows, p.id).slice(0, 8)

@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { useAuth } from '@/auth/AuthProvider'
 import { supabase } from '@/lib/supabase'
 
 export interface DesktopActivityRow {
@@ -31,6 +32,28 @@ export function useDesktopActivity(rangeDays: number) {
       if (error) throw error
       return (data ?? []) as DesktopActivityRow[]
     },
+  })
+}
+
+/** Returns true if the Tauri desktop companion has written activity in the last 3 minutes. */
+export function useTauriRunning() {
+  const { user } = useAuth()
+  return useQuery({
+    queryKey: ['tauri_running', user?.id],
+    queryFn: async () => {
+      if (!user) return false
+      const { data } = await supabase
+        .from('desktop_activity')
+        .select('recorded_at')
+        .eq('user_id', user.id)
+        .order('recorded_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (!data) return false
+      return Date.now() - new Date(data.recorded_at).getTime() < 3 * 60 * 1000
+    },
+    refetchInterval: 60_000,
+    enabled: !!user,
   })
 }
 
