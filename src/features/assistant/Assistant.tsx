@@ -42,7 +42,7 @@ export function Assistant() {
       <button
         onClick={() => setOpen(true)}
         className="fixed bottom-20 right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-hearth-green text-hearth-cream shadow-lg transition hover:bg-hearth-text md:bottom-6 md:right-6"
-        title="Open Vera — your AI planner"
+        title="Open Heather"
       >
         <Flame size={22} />
       </button>
@@ -55,7 +55,7 @@ export function Assistant() {
       <header className="flex items-center justify-between rounded-t-2xl border-b border-hearth-border bg-hearth-green px-4 py-3">
         <div className="flex items-center gap-2">
           <Flame size={16} className="text-hearth-gold" />
-          <span className="font-serif text-base font-medium text-hearth-cream">Vera</span>
+          <span className="font-serif text-base font-medium text-hearth-cream">Heather</span>
           <span className="text-xs text-hearth-cream/50">· your AI planner</span>
         </div>
         <button
@@ -123,7 +123,7 @@ export function Assistant() {
         <input
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder="Ask or tell Vera anything…"
+          placeholder="Ask or tell Heather anything…"
           className="flex-1 rounded-lg border border-hearth-border bg-hearth-cream px-3 py-2 text-sm text-hearth-green outline-none transition focus:border-hearth-gold focus:ring-1 focus:ring-hearth-gold/40"
         />
         <button

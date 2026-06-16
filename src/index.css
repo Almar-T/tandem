@@ -13,9 +13,19 @@ body,
 }
 
 body {
-  @apply bg-hearth-cream text-hearth-green antialiased;
+  @apply text-hearth-green antialiased;
+  background: linear-gradient(160deg, #f9f7f2 0%, #ede8de 100%);
+  min-height: 100vh;
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
     env(safe-area-inset-left);
+}
+
+/* Liquid-glass card utility */
+.glass {
+  background: rgba(255, 255, 255, 0.58);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.65);
 }
 
 * {

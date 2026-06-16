@@ -2,13 +2,15 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Tandem</title>
+  <title>HearthHall</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600&family=Inter:wght@400;500&display=swap" rel="stylesheet" />
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0 }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0 }
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background: #0f172a;
-      color: #e2e8f0;
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: linear-gradient(160deg, #f9f7f2 0%, #ede8de 100%);
+      color: #3d4f3f;
       height: 100vh;
       display: flex;
       align-items: center;
@@ -16,51 +18,146 @@
       padding: 28px;
       user-select: none;
     }
-    .card { width: 100%; max-width: 340px; }
-    h1 { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
-    .sub { font-size: 12px; color: #64748b; margin-bottom: 20px; line-height: 1.5 }
-    label { display: block; font-size: 11px; color: #94a3b8; margin-bottom: 4px }
+
+    .wrap { width: 100%; max-width: 300px; }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      margin-bottom: 20px;
+      justify-content: center;
+    }
+    .logo svg { width: 32px; height: 32px; }
+    .logo-name {
+      font-family: 'Playfair Display', Georgia, serif;
+      font-size: 20px;
+      font-weight: 600;
+      color: #1b2a1e;
+      letter-spacing: 0.02em;
+    }
+
+    .card {
+      background: rgba(255,255,255,0.6);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(255,255,255,0.7);
+      border-radius: 18px;
+      padding: 20px;
+      box-shadow: 0 6px 24px rgba(27,42,30,0.08);
+    }
+
+    .sub {
+      font-size: 12px;
+      color: #3d4f3f;
+      opacity: 0.65;
+      line-height: 1.55;
+      margin-bottom: 16px;
+    }
+
+    label {
+      display: block;
+      font-size: 11px;
+      font-weight: 500;
+      color: #3d4f3f;
+      opacity: 0.55;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      margin-bottom: 5px;
+    }
+
     input {
-      display: block; width: 100%;
-      padding: 8px 10px;
-      background: #1e293b; border: 1px solid #334155; border-radius: 8px;
-      color: #e2e8f0; font-size: 13px; outline: none;
-      margin-bottom: 12px; transition: border-color .15s;
+      display: block;
+      width: 100%;
+      padding: 8px 11px;
+      border: 1px solid #d4cfc4;
+      border-radius: 10px;
+      background: rgba(255,255,255,0.75);
+      color: #1b2a1e;
+      font-size: 13px;
+      font-family: inherit;
+      margin-bottom: 12px;
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
     }
-    input:focus { border-color: #6366f1 }
+    input:focus { border-color: #c2a76d; box-shadow: 0 0 0 3px rgba(194,167,109,0.2); }
+    input::placeholder { color: #3d4f3f; opacity: 0.3; }
+
     .btn {
-      width: 100%; padding: 9px; border: none; border-radius: 8px;
-      font-size: 13px; font-weight: 500; cursor: pointer; transition: opacity .15s;
+      width: 100%;
+      padding: 9px;
+      border: none;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 500;
+      font-family: inherit;
+      cursor: pointer;
+      transition: background 0.15s, opacity 0.15s;
     }
-    .btn:disabled { opacity: .5; cursor: default }
-    .primary { background: #6366f1; color: #fff }
-    .primary:not(:disabled):hover { background: #818cf8 }
-    .ghost { background: #1e293b; color: #94a3b8; border: 1px solid #334155; margin-top: 8px }
-    .ghost:not(:disabled):hover { color: #e2e8f0 }
-    .error { color: #f87171; font-size: 12px; margin-top: 10px }
-    .status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #22c55e; margin-right: 6px }
-    .connected { font-size: 13px; color: #94a3b8; margin-bottom: 14px }
-    #login-view, #connected-view { display: none }
+    .btn:disabled { opacity: 0.45; cursor: default; }
+
+    .primary { background: #1b2a1e; color: #f9f7f2; box-shadow: 0 2px 8px rgba(27,42,30,0.2); }
+    .primary:not(:disabled):hover { background: #3d4f3f; }
+
+    .ghost {
+      background: rgba(255,255,255,0.5);
+      border: 1px solid #d4cfc4;
+      color: #3d4f3f;
+      margin-top: 8px;
+    }
+    .ghost:not(:disabled):hover { background: #e8e4da; }
+
+    .error { color: #b91c1c; font-size: 11px; margin-top: 8px; }
+
+    .connected-label {
+      font-size: 13px;
+      font-weight: 500;
+      color: #1b2a1e;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+    .dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #16a34a;
+      box-shadow: 0 0 6px rgba(22,163,74,0.5);
+      flex-shrink: 0;
+    }
+    .email-label { font-size: 11px; opacity: 0.55; margin-bottom: 14px; }
+
+    #login-view, #connected-view { display: none; }
   </style>
 </head>
 <body>
-<div class="card">
-  <h1>Tandem</h1>
-
-  <div id="login-view">
-    <p class="sub">Sign in to start tracking which apps you use while your timer is running.</p>
-    <label>Email</label>
-    <input id="email" type="email" autocomplete="email" placeholder="you@example.com" />
-    <label>Password</label>
-    <input id="password" type="password" autocomplete="current-password" placeholder="••••••••" />
-    <button id="signin-btn" class="btn primary">Connect to Tandem</button>
-    <div id="error" class="error" style="display:none"></div>
+<div class="wrap">
+  <div class="logo">
+    <svg viewBox="0 0 32 32" fill="none">
+      <path d="M16 3C16 3 7 10.5 7 18a9 9 0 0 0 18 0C25 10.5 16 3 16 3Z" fill="#1b2a1e"/>
+      <path d="M16 11c0 0-4.5 4-4.5 7.5a4.5 4.5 0 0 0 9 0C20.5 15 16 11 16 11Z" fill="#c2a76d"/>
+      <path d="M16 17c0 0-2 1.75-2 3.25a2 2 0 0 0 4 0C18 18.75 16 17 16 17Z" fill="#f9f7f2"/>
+    </svg>
+    <span class="logo-name">HearthHall</span>
   </div>
 
-  <div id="connected-view">
-    <p class="sub">Desktop activity is being tracked while your Tandem timer is running.</p>
-    <p class="connected"><span class="status-dot"></span><span id="user-email"></span></p>
-    <button id="signout-btn" class="btn ghost">Disconnect</button>
+  <div class="card">
+    <div id="login-view">
+      <p class="sub">Sign in to track which apps you use while your focus timer is running.</p>
+      <label>Email</label>
+      <input id="email" type="email" autocomplete="email" placeholder="you@example.com" />
+      <label>Password</label>
+      <input id="password" type="password" autocomplete="current-password" placeholder="••••••••" />
+      <button id="signin-btn" class="btn primary">Connect to HearthHall</button>
+      <div id="error" class="error" style="display:none"></div>
+    </div>
+
+    <div id="connected-view">
+      <p class="sub">Desktop activity is being tracked while your focus timer is running.</p>
+      <div class="connected-label"><span class="dot"></span>Tracking active</div>
+      <p class="email-label" id="user-email"></p>
+      <button id="signout-btn" class="btn ghost">Disconnect</button>
+    </div>
   </div>
 </div>
 
@@ -108,7 +205,7 @@
       showError(e)
     } finally {
       signinBtn.disabled = false
-      signinBtn.textContent = 'Connect to Tandem'
+      signinBtn.textContent = 'Connect to HearthHall'
     }
   })
 

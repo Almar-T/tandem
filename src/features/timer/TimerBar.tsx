@@ -1,9 +1,7 @@
-import { useState } from 'react'
-import { Pause, Play, PenLine } from 'lucide-react'
+import { Pause } from 'lucide-react'
 import type { IdleReason } from '@/lib/types'
 import { cn } from '@/lib/cn'
 import { useTimer } from './TimerProvider'
-import { ManualHoursModal } from './ManualHoursModal'
 
 function clock(sec: number) {
   const h = Math.floor(sec / 3600)
@@ -23,34 +21,11 @@ const REASONS: { value: IdleReason; label: string }[] = [
   { value: 'other', label: 'Other' },
 ]
 
-/** Persistent timer. Idle → a one-click start pill + log button; running → the full session bar. */
+/** Shows only when a session is running — the dashboard handles starting. */
 export function TimerBar() {
   const t = useTimer()
-  const [logOpen, setLogOpen] = useState(false)
 
-  if (!t.running) {
-    return (
-      <>
-        <div className="fixed left-1/2 top-[60px] z-30 flex -translate-x-1/2 items-center gap-1.5">
-          <button
-            onClick={() => t.start()}
-            className="inline-flex items-center gap-1.5 rounded-full border border-hearth-border bg-hearth-cream/90 px-3 py-1.5 text-xs text-hearth-text shadow-sm backdrop-blur transition hover:bg-hearth-muted"
-            title="Start a focus timer"
-          >
-            <Play size={13} className="text-productive" /> Start timer
-          </button>
-          <button
-            onClick={() => setLogOpen(true)}
-            className="inline-flex items-center gap-1.5 rounded-full border border-hearth-border bg-hearth-cream/90 px-3 py-1.5 text-xs text-hearth-text shadow-sm backdrop-blur transition hover:bg-hearth-muted"
-            title="Log manual hours"
-          >
-            <PenLine size={13} className="text-explained" /> Log hours
-          </button>
-        </div>
-        <ManualHoursModal open={logOpen} onClose={() => setLogOpen(false)} />
-      </>
-    )
-  }
+  if (!t.running) return null
 
   const total = t.activeSec + t.explainedSec + t.unexplainedSec + t.pendingIdleSec || 1
   const pct = (n: number) => `${(n / total) * 100}%`
