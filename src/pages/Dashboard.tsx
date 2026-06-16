@@ -413,21 +413,19 @@ function DashboardAnalytics() {
 
             {/* Stacked bar chart */}
             <div className="px-5 py-4">
-              <div className="flex h-28 items-end gap-1.5">
+              <div className="flex h-28 gap-1.5">
                 {breakdown.map(({ day, active, explained, unexplained }) => {
                   const total = active + explained + unexplained
-                  const h = (total / maxSec) * 100
+                  const barH = Math.max((total / maxSec) * 96, total > 0 ? 3 : 0)
                   return (
-                    <div key={day.toISOString()} className="flex flex-1 flex-col items-center gap-1">
-                      <div className="flex h-full w-full items-end">
-                        <div
-                          className="w-full overflow-hidden rounded-t-sm"
-                          style={{ height: `${Math.max(h, total > 0 ? 4 : 0)}%` }}
-                        >
-                          <div style={{ height: `${(active      / (total || 1)) * 100}%` }} className="w-full bg-productive" />
-                          <div style={{ height: `${(explained   / (total || 1)) * 100}%` }} className="w-full bg-explained" />
-                          <div style={{ height: `${(unexplained / (total || 1)) * 100}%` }} className="w-full bg-unexplained" />
-                        </div>
+                    <div key={day.toISOString()} className="flex flex-1 flex-col items-center justify-end gap-1">
+                      <div
+                        className="w-full overflow-hidden rounded-t-sm"
+                        style={{ height: `${barH}px` }}
+                      >
+                        <div style={{ height: `${(active      / (total || 1)) * 100}%` }} className="w-full bg-productive" />
+                        <div style={{ height: `${(explained   / (total || 1)) * 100}%` }} className="w-full bg-explained" />
+                        <div style={{ height: `${(unexplained / (total || 1)) * 100}%` }} className="w-full bg-unexplained" />
                       </div>
                       <span className="text-[9px] text-hearth-text/40">{format(day, 'EEEEE')}</span>
                     </div>

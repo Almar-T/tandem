@@ -277,32 +277,30 @@ function UserSection({
       {/* Stacked bar chart */}
       <div className="overflow-x-auto px-5 py-4">
         <div
-          className="flex items-end gap-0.5"
+          className="flex gap-0.5"
           style={{ minWidth: chartDays.length > 14 ? `${chartDays.length * 18}px` : undefined, height: '8rem' }}
         >
           {bars.map(({ day, active, explained, unexplained }, idx) => {
             const total = active + explained + unexplained
-            const h = (total / maxSec) * 100
+            const barH = Math.max((total / maxSec) * 108, total > 0 ? 3 : 0)
             const showLabel = idx % labelEvery === 0 || idx === bars.length - 1
             return (
               <div
                 key={day.toISOString()}
-                className="flex flex-1 flex-col items-center gap-0.5"
+                className="flex flex-1 flex-col items-center justify-end gap-0.5"
                 style={{ minWidth: chartDays.length > 14 ? '16px' : undefined }}
               >
-                <div className="flex h-full w-full items-end">
-                  <div
-                    className="w-full overflow-hidden rounded-t-sm"
-                    style={{ height: `${Math.max(h, total > 0 ? 3 : 0)}%` }}
-                    title={`${format(day, 'EEE MMM d')}: ${formatHours(active)} active, ${formatHours(explained)} explained, ${formatHours(unexplained)} idle`}
-                  >
-                    <div style={{ height: `${(active      / (total || 1)) * 100}%` }} className="w-full bg-productive" />
-                    <div style={{ height: `${(explained   / (total || 1)) * 100}%` }} className="w-full bg-explained" />
-                    <div style={{ height: `${(unexplained / (total || 1)) * 100}%` }} className="w-full bg-unexplained" />
-                  </div>
+                <div
+                  className="w-full overflow-hidden rounded-t-sm"
+                  style={{ height: `${barH}px` }}
+                  title={`${format(day, 'EEE MMM d')}: ${formatHours(active)} active, ${formatHours(explained)} explained, ${formatHours(unexplained)} idle`}
+                >
+                  <div style={{ height: `${(active      / (total || 1)) * 100}%` }} className="w-full bg-productive" />
+                  <div style={{ height: `${(explained   / (total || 1)) * 100}%` }} className="w-full bg-explained" />
+                  <div style={{ height: `${(unexplained / (total || 1)) * 100}%` }} className="w-full bg-unexplained" />
                 </div>
                 <span className="text-[8px] text-hearth-text/40" style={{ visibility: showLabel ? 'visible' : 'hidden' }}>
-                  {view === 'week'   ? format(day, 'EEEEE') : format(day, 'd')}
+                  {view === 'week' ? format(day, 'EEEEE') : format(day, 'd')}
                 </span>
               </div>
             )
