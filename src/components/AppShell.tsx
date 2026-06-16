@@ -9,6 +9,7 @@ import { Assistant } from '@/features/assistant/Assistant'
 import { TimerBar, timerClock } from '@/features/timer/TimerBar'
 import { useTimer } from '@/features/timer/TimerProvider'
 import { useDailyCheckin } from '@/features/checkin/useDailyCheckin'
+import { EnableNotifications } from '@/features/notifications/EnableNotifications'
 
 const NAV = [
   { to: '/',          label: 'Home',      icon: LayoutDashboard, end: true },
@@ -171,6 +172,10 @@ export function AppShell() {
       {/* ── Main content ───────────────────────────────────────── */}
       <main className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-7xl p-5 pb-24">
+          {/* Prompt to enable push notifications (hidden once granted) */}
+          <div className="mb-4">
+            <EnableNotifications />
+          </div>
           <Outlet />
         </div>
       </main>

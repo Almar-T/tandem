@@ -19,6 +19,7 @@ import { useProfiles } from '@/features/profiles/useProfiles'
 import { filterRange, totalsFor, formatHours } from '@/features/analytics/analytics'
 import { ManualHoursModal } from '@/features/timer/ManualHoursModal'
 import { useTimer } from '@/features/timer/TimerProvider'
+import { supabase } from '@/lib/supabase'
 import type { WorkSession } from '@/lib/types'
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -536,6 +537,9 @@ export function Dashboard() {
 
   function confirmEndDay() {
     setEndDayConfirm(false)
+    // Fire accomplishment notification to both users (fire-and-forget).
+    supabase.functions.invoke('end-of-day').catch(() => {})
+    // Open Heather for personal end-of-day reflection.
     window.dispatchEvent(
       new CustomEvent(OPEN_PLANNER_EVENT, {
         detail:
