@@ -1,5 +1,5 @@
 import { useMemo, useState, type FormEvent } from 'react'
-import { format, isSameDay, isAfter, startOfDay, subDays, eachDayOfInterval } from 'date-fns'
+import { format, isSameDay, isAfter, startOfDay, startOfWeek, endOfWeek, eachDayOfInterval } from 'date-fns'
 import {
   Send, Flame, Sun, Moon, Play, Square, PenLine, Check, Plus, Target,
 } from 'lucide-react'
@@ -39,7 +39,11 @@ function isFuture(s: string) {
 }
 
 function dailyBreakdown(sessions: WorkSession[], userId: string) {
-  const days = eachDayOfInterval({ start: subDays(startOfDay(new Date()), 6), end: new Date() })
+  const now = new Date()
+  const days = eachDayOfInterval({
+    start: startOfWeek(now, { weekStartsOn: 1 }),
+    end: endOfWeek(now, { weekStartsOn: 1 }),
+  })
   return days.map((day) => {
     const ds = sessions.filter((s) => s.user_id === userId && isSameDay(new Date(s.started_at), day))
     return {

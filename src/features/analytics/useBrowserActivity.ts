@@ -23,6 +23,7 @@ export interface DomainSummary {
 export function useBrowserActivity(rangeDays: number) {
   return useQuery({
     queryKey: ['browser_activity', rangeDays],
+    refetchInterval: 5 * 60 * 1000,
     queryFn: async () => {
       let query = supabase
         .from('browser_activity')

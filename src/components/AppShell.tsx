@@ -6,7 +6,8 @@ import { useAuth } from '@/auth/AuthProvider'
 import { cn } from '@/lib/cn'
 import { supabase } from '@/lib/supabase'
 import { Assistant } from '@/features/assistant/Assistant'
-import { TimerBar } from '@/features/timer/TimerBar'
+import { TimerBar, timerClock } from '@/features/timer/TimerBar'
+import { useTimer } from '@/features/timer/TimerProvider'
 import { useDailyCheckin } from '@/features/checkin/useDailyCheckin'
 
 const NAV = [
@@ -70,6 +71,7 @@ export function AppShell() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [nameOpen, setNameOpen] = useState(false)
   const name = user?.user_metadata?.display_name ?? user?.email?.split('@')[0] ?? 'You'
+  const timer = useTimer()
   useDailyCheckin()
 
   const isDashboard = pathname === '/'
@@ -89,6 +91,22 @@ export function AppShell() {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Timer chip — visible when session is running */}
+          {timer.running && (
+            <div className={cn(
+              'hidden items-center gap-1.5 rounded-lg border px-2.5 py-1 font-mono text-xs sm:flex',
+              timer.idlePrompt
+                ? 'border-explained/40 bg-explained/10 text-explained'
+                : 'border-productive/30 bg-productive/10 text-productive',
+            )}>
+              <span className={cn(
+                'h-1.5 w-1.5 rounded-full',
+                timer.idlePrompt ? 'animate-pulse bg-explained' : 'bg-productive',
+              )} />
+              {timerClock(timer.activeSec)}
+            </div>
+          )}
+
           {/* Clickable name → display name editor */}
           <div className="relative hidden md:block">
             <button
@@ -157,7 +175,7 @@ export function AppShell() {
         </div>
       </main>
 
-      {/* Timer running indicator (only shows when active) */}
+      {/* Idle prompt — bottom-left corner, only when timer detects inactivity */}
       <TimerBar />
 
       {/* Floating Heather button — hidden on dashboard (it's inline there) */}

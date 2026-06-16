@@ -1,6 +1,9 @@
 import { useMemo, useState } from 'react'
-import { format, isSameDay, startOfDay, subDays, eachDayOfInterval } from 'date-fns'
-import { Keyboard, MousePointer2, Globe, ChevronLeft } from 'lucide-react'
+import {
+  format, isSameDay, startOfWeek, endOfWeek, eachDayOfInterval,
+  startOfMonth, endOfMonth, addMonths, subMonths, isAfter,
+} from 'date-fns'
+import { Keyboard, MousePointer2, Globe, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import type { Profile, Task, WorkSession } from '@/lib/types'
 import { cn } from '@/lib/cn'
@@ -14,16 +17,45 @@ import { useDesktopActivity, summariseByApp } from './useDesktopActivity'
 
 const USER_COLORS = ['#1b2a1e', '#c2a76d']
 
-const RANGES: { value: Range; label: string }[] = [
-  { value: 7,  label: '7 days'   },
-  { value: 30, label: '30 days'  },
-  { value: 0,  label: 'All time' },
+type ViewMode = 'week' | '30days' | 'month' | 'alltime'
+
+const VIEWS: { id: ViewMode; label: string }[] = [
+  { id: 'week',    label: 'This week' },
+  { id: '30days',  label: '30 days'   },
+  { id: 'month',   label: 'Month'     },
+  { id: 'alltime', label: 'All time'  },
 ]
 
-function userDailyBreakdown(sessions: WorkSession[], userId: string, range: Range) {
-  const days = range === 0
-    ? eachDayOfInterval({ start: subDays(startOfDay(new Date()), 29), end: new Date() })
-    : eachDayOfInterval({ start: subDays(startOfDay(new Date()), range - 1), end: new Date() })
+function viewToRange(mode: ViewMode): Range {
+  if (mode === 'week')    return 7
+  if (mode === '30days')  return 30
+  if (mode === 'alltime') return 0
+  return 30
+}
+
+/** Days for the weekly chart (always Mon–Sun of current week). */
+function weekDays() {
+  const now = new Date()
+  return eachDayOfInterval({
+    start: startOfWeek(now, { weekStartsOn: 1 }),
+    end:   endOfWeek(now,   { weekStartsOn: 1 }),
+  })
+}
+
+/** Days for a rolling 30-day window. */
+function rollingDays(n: number) {
+  const end = new Date()
+  const start = new Date(end)
+  start.setDate(start.getDate() - (n - 1))
+  return eachDayOfInterval({ start, end })
+}
+
+/** All days in a calendar month. */
+function monthDays(monthDate: Date) {
+  return eachDayOfInterval({ start: startOfMonth(monthDate), end: endOfMonth(monthDate) })
+}
+
+function breakdown(sessions: WorkSession[], userId: string, days: Date[]) {
   return days.map((day) => {
     const ds = sessions.filter((s) => s.user_id === userId && isSameDay(new Date(s.started_at), day))
     return {
@@ -40,12 +72,37 @@ export function AnalyticsPage() {
   const { data: sessions = [], isLoading } = useWorkSessions()
   const { data: profiles = [] } = useProfiles()
   const { data: tasks = [] } = useTasks()
-  const [range, setRange] = useState<Range>(7)
-  const { data: browserRows = [] } = useBrowserActivity(range === 0 ? 0 : range)
-  const { data: distractionEvents = [] } = useDistractionEvents(range === 0 ? 0 : range)
-  const { data: desktopRows = [] } = useDesktopActivity(range === 0 ? 0 : range)
 
-  const scoped = useMemo(() => filterRange(sessions, range), [sessions, range])
+  const [view, setView] = useState<ViewMode>('week')
+  const [monthDate, setMonthDate] = useState(() => startOfMonth(new Date()))
+
+  const range: Range = viewToRange(view)
+  const { data: browserRows = [] } = useBrowserActivity(range)
+  const { data: distractionEvents = [] } = useDistractionEvents(range)
+  const { data: desktopRows = [] } = useDesktopActivity(range)
+
+  // Sessions filtered to the current view
+  const scoped = useMemo(() => {
+    if (view === 'month') {
+      const start = startOfMonth(monthDate)
+      const end   = endOfMonth(monthDate)
+      return sessions.filter((s) => {
+        const d = new Date(s.started_at)
+        return d >= start && d <= end
+      })
+    }
+    return filterRange(sessions, range)
+  }, [sessions, view, range, monthDate])
+
+  // Days to show in the bar chart
+  const chartDays = useMemo(() => {
+    if (view === 'week')    return weekDays()
+    if (view === '30days')  return rollingDays(30)
+    if (view === 'month')   return monthDays(monthDate)
+    return rollingDays(30)
+  }, [view, monthDate])
+
+  const canGoNextMonth = isAfter(startOfMonth(new Date()), monthDate)
 
   return (
     <div className="mx-auto max-w-4xl space-y-5">
@@ -60,21 +117,47 @@ export function AnalyticsPage() {
           </button>
           <h1 className="font-serif text-2xl font-semibold text-hearth-green">Analytics</h1>
         </div>
-        <div className="flex rounded-xl border border-hearth-border/60 bg-white/50 p-0.5">
-          {RANGES.map((r) => (
-            <button
-              key={r.value}
-              onClick={() => setRange(r.value)}
-              className={cn(
-                'rounded-lg px-3 py-1.5 text-xs font-medium transition',
-                range === r.value
-                  ? 'bg-hearth-green text-hearth-cream shadow-sm'
-                  : 'text-hearth-text/60 hover:text-hearth-green',
-              )}
-            >
-              {r.label}
-            </button>
-          ))}
+
+        <div className="flex items-center gap-2">
+          {/* Month navigator (only when Month view active) */}
+          {view === 'month' && (
+            <div className="flex items-center gap-1 rounded-xl border border-hearth-border/60 bg-white/50 px-2 py-1">
+              <button
+                onClick={() => setMonthDate((d) => subMonths(d, 1))}
+                className="rounded-lg p-1 text-hearth-text/50 transition hover:bg-hearth-muted hover:text-hearth-green"
+              >
+                <ChevronLeft size={14} />
+              </button>
+              <span className="min-w-[90px] text-center text-xs font-medium text-hearth-green">
+                {format(monthDate, 'MMMM yyyy')}
+              </span>
+              <button
+                onClick={() => setMonthDate((d) => addMonths(d, 1))}
+                disabled={!canGoNextMonth}
+                className="rounded-lg p-1 text-hearth-text/50 transition hover:bg-hearth-muted hover:text-hearth-green disabled:opacity-30"
+              >
+                <ChevronRight size={14} />
+              </button>
+            </div>
+          )}
+
+          {/* View selector */}
+          <div className="flex rounded-xl border border-hearth-border/60 bg-white/50 p-0.5">
+            {VIEWS.map((v) => (
+              <button
+                key={v.id}
+                onClick={() => setView(v.id)}
+                className={cn(
+                  'rounded-lg px-3 py-1.5 text-xs font-medium transition',
+                  view === v.id
+                    ? 'bg-hearth-green text-hearth-cream shadow-sm'
+                    : 'text-hearth-text/60 hover:text-hearth-green',
+                )}
+              >
+                {v.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -86,7 +169,7 @@ export function AnalyticsPage() {
         </div>
       )}
 
-      {/* Per-user summary cards + separate bar charts */}
+      {/* Per-user section: summary + stacked chart */}
       {sessions.length > 0 && profiles.map((p, i) => (
         <UserSection
           key={p.id}
@@ -94,7 +177,9 @@ export function AnalyticsPage() {
           index={i}
           sessions={scoped}
           tasks={tasks}
-          range={range}
+          chartDays={chartDays}
+          view={view}
+          monthDate={monthDate}
         />
       ))}
 
@@ -124,20 +209,24 @@ export function AnalyticsPage() {
   )
 }
 
-// ── Per-user section: summary + stacked bar chart ─────────────────────────────
+// ── Per-user section ──────────────────────────────────────────────────────────
 
 function UserSection({
   profile,
   index,
   sessions,
   tasks,
-  range,
+  chartDays,
+  view,
+  monthDate,
 }: {
   profile: Profile
   index: number
   sessions: WorkSession[]
   tasks: Task[]
-  range: Range
+  chartDays: Date[]
+  view: ViewMode
+  monthDate: Date
 }) {
   const t = totalsFor(sessions, profile.id)
   const completed = tasks.filter(
@@ -145,12 +234,15 @@ function UserSection({
       task.assignee_id === profile.id &&
       task.status === 'completed' &&
       task.completed_at &&
-      (range === 0 || new Date(task.completed_at).getTime() >= Date.now() - range * 86400000),
+      sessions.some((s) => isSameDay(new Date(s.started_at), new Date(task.completed_at!))),
   ).length
 
-  const breakdown = userDailyBreakdown(sessions, profile.id, range)
-  const maxSec = Math.max(1, ...breakdown.map((d) => d.active + d.explained + d.unexplained))
+  const bars = breakdown(sessions, profile.id, chartDays)
+  const maxSec = Math.max(1, ...bars.map((d) => d.active + d.explained + d.unexplained))
   const color = USER_COLORS[index % 2]
+
+  // For month/30-day views, show abbreviated date labels every N days
+  const labelEvery = view === 'month' ? 5 : view === '30days' ? 5 : 1
 
   return (
     <div className="glass overflow-hidden rounded-2xl shadow-md">
@@ -161,8 +253,11 @@ function UserSection({
             {profile.display_name}
           </span>
           <span className="font-serif text-2xl font-bold text-hearth-green">{formatHours(t.active)}</span>
-          <span className="text-xs text-hearth-text/50">productive · {t.sessions} sessions · {completed} tasks done</span>
-          <div className="ml-auto flex gap-3 text-[11px] text-hearth-text/50">
+          <span className="text-xs text-hearth-text/50">
+            productive · {t.sessions} sessions
+            {completed > 0 && ` · ${completed} tasks done`}
+          </span>
+          <div className="ml-auto flex flex-wrap gap-3 text-[11px] text-hearth-text/50">
             <span className="flex items-center gap-1.5">
               <span className="inline-block h-2 w-2 rounded-sm bg-productive" />
               {formatHours(t.active)} active
@@ -180,31 +275,46 @@ function UserSection({
       </div>
 
       {/* Stacked bar chart */}
-      <div className="px-5 py-4">
-        <div className="flex h-32 items-end gap-1">
-          {breakdown.map(({ day, active, explained, unexplained }) => {
+      <div className="overflow-x-auto px-5 py-4">
+        <div
+          className="flex items-end gap-0.5"
+          style={{ minWidth: chartDays.length > 14 ? `${chartDays.length * 18}px` : undefined, height: '8rem' }}
+        >
+          {bars.map(({ day, active, explained, unexplained }, idx) => {
             const total = active + explained + unexplained
             const h = (total / maxSec) * 100
+            const showLabel = idx % labelEvery === 0 || idx === bars.length - 1
             return (
-              <div key={day.toISOString()} className="flex flex-1 flex-col items-center gap-1">
+              <div
+                key={day.toISOString()}
+                className="flex flex-1 flex-col items-center gap-0.5"
+                style={{ minWidth: chartDays.length > 14 ? '16px' : undefined }}
+              >
                 <div className="flex h-full w-full items-end">
                   <div
                     className="w-full overflow-hidden rounded-t-sm"
                     style={{ height: `${Math.max(h, total > 0 ? 3 : 0)}%` }}
-                    title={`${format(day, 'MMM d')}: ${formatHours(active)} active, ${formatHours(explained)} explained, ${formatHours(unexplained)} idle`}
+                    title={`${format(day, 'EEE MMM d')}: ${formatHours(active)} active, ${formatHours(explained)} explained, ${formatHours(unexplained)} idle`}
                   >
                     <div style={{ height: `${(active      / (total || 1)) * 100}%` }} className="w-full bg-productive" />
                     <div style={{ height: `${(explained   / (total || 1)) * 100}%` }} className="w-full bg-explained" />
                     <div style={{ height: `${(unexplained / (total || 1)) * 100}%` }} className="w-full bg-unexplained" />
                   </div>
                 </div>
-                <span className="text-[9px] text-hearth-text/40">
-                  {format(day, range === 7 ? 'EEEEE' : 'd')}
+                <span className="text-[8px] text-hearth-text/40" style={{ visibility: showLabel ? 'visible' : 'hidden' }}>
+                  {view === 'week'   ? format(day, 'EEEEE') : format(day, 'd')}
                 </span>
               </div>
             )
           })}
         </div>
+
+        {view === 'month' && (
+          <div className="mt-1 flex justify-between text-[9px] text-hearth-text/30">
+            <span>{format(monthDate, 'MMMM 1')}</span>
+            <span>{format(endOfMonth(monthDate), 'MMMM d')}</span>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -276,9 +386,9 @@ function DistractionSection({ events, profiles }: { events: DistractionEvent[]; 
         {profiles.map((p, i) => {
           const mine = events.filter((e) => e.user_id === p.id)
           if (mine.length === 0) return null
-          const approved = mine.filter((e) => e.ai_approved === true).length
-          const lockIns  = mine.filter((e) => e.action === 'lock_in').length
-          const breaks   = mine.filter((e) => e.action === 'break').length
+          const approved  = mine.filter((e) => e.ai_approved === true).length
+          const lockIns   = mine.filter((e) => e.action === 'lock_in').length
+          const breaks    = mine.filter((e) => e.action === 'break').length
           const overrides = mine.filter((e) => e.action === 'override').length
           return (
             <div key={p.id} className="glass rounded-2xl p-4">
@@ -355,10 +465,10 @@ function BrowserActivitySection({
       <h2 className="font-serif text-lg font-semibold text-hearth-green">Browser activity</h2>
       <div className="grid gap-3 sm:grid-cols-2">
         {profiles.map((p, i) => {
-          const domains = summariseByDomain(rows, p.id).slice(0, 8)
-          const totalKeys   = domains.reduce((s, d) => s + d.keystrokes, 0)
+          const domains    = summariseByDomain(rows, p.id).slice(0, 8)
+          const totalKeys  = domains.reduce((s, d) => s + d.keystrokes, 0)
           const totalClicks = domains.reduce((s, d) => s + d.clicks, 0)
-          const totalSec    = domains.reduce((s, d) => s + d.active_sec, 0)
+          const totalSec   = domains.reduce((s, d) => s + d.active_sec, 0)
           if (domains.length === 0) return null
           return (
             <div key={p.id} className="glass rounded-2xl p-4">
@@ -384,7 +494,7 @@ function BrowserActivitySection({
                   return (
                     <div key={d.domain} className="flex items-center gap-2">
                       <Globe size={11} className={cn('shrink-0', flagged ? 'text-unexplained' : 'text-hearth-text/30')} />
-                      <span className={cn('min-w-0 flex-1 truncate text-[11px]', flagged ? 'text-unexplained font-medium' : 'text-hearth-green')}>
+                      <span className={cn('min-w-0 flex-1 truncate text-[11px]', flagged ? 'font-medium text-unexplained' : 'text-hearth-green')}>
                         {d.domain}{flagged && ' ⚑'}
                       </span>
                       <span className={cn('shrink-0 text-[10px]', flagged ? 'text-unexplained' : 'text-hearth-text/50')}>
