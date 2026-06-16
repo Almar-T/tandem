@@ -3,7 +3,7 @@ import {
   format, isSameDay, startOfWeek, endOfWeek, eachDayOfInterval,
   startOfMonth, endOfMonth, addMonths, subMonths, isAfter,
 } from 'date-fns'
-import { Keyboard, MousePointer2, Globe, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Keyboard, Globe, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import type { Profile, Task, WorkSession } from '@/lib/types'
 import { cn } from '@/lib/cn'
@@ -465,10 +465,9 @@ function BrowserActivitySection({
       <h2 className="font-serif text-lg font-semibold text-hearth-green">Browser activity</h2>
       <div className="grid gap-3 sm:grid-cols-2">
         {profiles.map((p, i) => {
-          const domains    = summariseByDomain(rows, p.id).slice(0, 8)
-          const totalKeys  = domains.reduce((s, d) => s + d.keystrokes, 0)
-          const totalClicks = domains.reduce((s, d) => s + d.clicks, 0)
-          const totalSec   = domains.reduce((s, d) => s + d.active_sec, 0)
+          const domains   = summariseByDomain(rows, p.id).slice(0, 8)
+          const totalKeys = domains.reduce((s, d) => s + d.keystrokes, 0)
+          const totalSec  = domains.reduce((s, d) => s + d.active_sec, 0)
           if (domains.length === 0) return null
           return (
             <div key={p.id} className="glass rounded-2xl p-4">
@@ -482,10 +481,6 @@ function BrowserActivitySection({
                 <span className="flex items-center gap-1">
                   <Keyboard size={12} className="text-hearth-text/40" />
                   {totalKeys.toLocaleString()} keystrokes
-                </span>
-                <span className="flex items-center gap-1">
-                  <MousePointer2 size={12} className="text-hearth-text/40" />
-                  {totalClicks.toLocaleString()} clicks
                 </span>
               </div>
               <div className="space-y-1.5">
