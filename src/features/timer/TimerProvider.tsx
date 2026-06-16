@@ -45,6 +45,7 @@ export function TimerProvider({ children }: { children: ReactNode }) {
   const idlePromptRef      = useRef(false)
   const reasonRef          = useRef<IdleReason | null>(null)
   const lastActivityRef    = useRef(Date.now())
+  const appHiddenRef       = useRef(false) // true while HearthHall is in background
 
   // Timestamp-based accumulators — immune to interval throttling.
   // Time is always computed as (Date.now() - startTimestamp), so a slow
@@ -102,6 +103,40 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     return () => events.forEach((e) => window.removeEventListener(e, onActivity))
   }, [])
 
+  // ── Visibility listener ─────────────────────────────────────────────────
+  // When the user switches to another app the browser fires visibilitychange.
+  // While hidden we skip idle detection so background work doesn't get flagged.
+  // When returning, we cancel any idle prompt that fired while we were away and
+  // reset lastActivity so idle detection starts fresh from the current moment.
+
+  useEffect(() => {
+    if (!running) return
+    function onVisibility() {
+      if (document.hidden) {
+        appHiddenRef.current = true
+      } else {
+        appHiddenRef.current = false
+        const now = Date.now()
+        // If idle prompt appeared while we were in another app, cancel it —
+        // that gap was background work, not genuine idle time.
+        if (idlePromptRef.current) {
+          // Resume the active stretch from when the idle prompt started
+          // (the user was away working, not truly idle).
+          activeStartRef.current = idlePromptStartRef.current ?? now
+          idlePromptStartRef.current = null
+          idlePromptRef.current = false
+          setIdlePrompt(false)
+          setPendingIdleSec(0)
+        }
+        // Give idle detection a clean slate from this moment.
+        lastActivityRef.current = now
+        setActiveSec(calcActiveSec())
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => document.removeEventListener('visibilitychange', onVisibility)
+  }, [running])
+
   // ── Ticker ───────────────────────────────────────────────────────────────
   // Fires ~every second but may be throttled in background to once per minute.
   // All time values derive from Date.now() so accuracy is preserved regardless.
@@ -110,6 +145,13 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     if (!running) return
     const id = setInterval(() => {
       const now = Date.now()
+
+      // While the app is in background, skip idle detection entirely —
+      // just keep the display fresh using timestamps.
+      if (appHiddenRef.current) {
+        setActiveSec(calcActiveSec())
+        return
+      }
 
       if (idlePromptRef.current) {
         // Idle prompt is showing — just refresh the display counter.
