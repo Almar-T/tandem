@@ -45,7 +45,8 @@ export function TimerProvider({ children }: { children: ReactNode }) {
   const idlePromptRef      = useRef(false)
   const reasonRef          = useRef<IdleReason | null>(null)
   const lastActivityRef    = useRef(Date.now())
-  const appHiddenRef       = useRef(false) // true while HearthHall is in background
+  const appHiddenRef       = useRef(false)
+  const hiddenAtRef        = useRef<number | null>(null) // when tab went to background
 
   // Timestamp-based accumulators — immune to interval throttling.
   // Time is always computed as (Date.now() - startTimestamp), so a slow
@@ -104,31 +105,39 @@ export function TimerProvider({ children }: { children: ReactNode }) {
   }, [])
 
   // ── Visibility listener ─────────────────────────────────────────────────
-  // When the user switches to another app the browser fires visibilitychange.
-  // While hidden we skip idle detection so background work doesn't get flagged.
-  // When returning, we cancel any idle prompt that fired while we were away and
-  // reset lastActivity so idle detection starts fresh from the current moment.
+  // On hide: freeze the active stretch so background time isn't auto-counted.
+  // On show:
+  //   • Short absence (< IDLE_THRESHOLD): resume as active — just a quick switch.
+  //   • Long absence (≥ IDLE_THRESHOLD): show the idle prompt so the user can
+  //     classify that time as work, break, etc. Same flow as normal idle.
 
   useEffect(() => {
     if (!running) return
     function onVisibility() {
+      const now = Date.now()
       if (document.hidden) {
         appHiddenRef.current = true
+        hiddenAtRef.current = now
+        // Freeze active time at the moment we left.
+        commitActiveAt(now)
       } else {
         appHiddenRef.current = false
-        const now = Date.now()
-        // If idle prompt appeared while we were in another app, cancel it —
-        // that gap was background work, not genuine idle time.
-        if (idlePromptRef.current) {
-          // Resume the active stretch from when the idle prompt started
-          // (the user was away working, not truly idle).
-          activeStartRef.current = idlePromptStartRef.current ?? now
-          idlePromptStartRef.current = null
-          idlePromptRef.current = false
-          setIdlePrompt(false)
-          setPendingIdleSec(0)
+        const hiddenAt = hiddenAtRef.current ?? now
+        const awayMs = now - hiddenAt
+        hiddenAtRef.current = null
+
+        if (awayMs < IDLE_THRESHOLD_SEC * 1000) {
+          // Brief switch — treat the gap as active and keep going.
+          activeStartRef.current = now
+        } else if (!idlePromptRef.current) {
+          // Long absence — trigger the idle prompt exactly as if the user
+          // had been sitting idle at the keyboard.
+          idlePromptStartRef.current = hiddenAt + IDLE_THRESHOLD_SEC * 1000
+          idlePromptRef.current = true
+          setIdlePrompt(true)
+          setPendingIdleSec(Math.floor((now - idlePromptStartRef.current) / 1000))
         }
-        // Give idle detection a clean slate from this moment.
+
         lastActivityRef.current = now
         setActiveSec(calcActiveSec())
       }
@@ -146,12 +155,9 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     const id = setInterval(() => {
       const now = Date.now()
 
-      // While the app is in background, skip idle detection entirely —
-      // just keep the display fresh using timestamps.
-      if (appHiddenRef.current) {
-        setActiveSec(calcActiveSec())
-        return
-      }
+      // While hidden: active time is frozen (committed on hide).
+      // The visibilitychange handler handles the return — skip all tick logic.
+      if (appHiddenRef.current) return
 
       if (idlePromptRef.current) {
         // Idle prompt is showing — just refresh the display counter.
