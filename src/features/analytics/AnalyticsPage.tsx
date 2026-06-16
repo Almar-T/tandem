@@ -109,7 +109,11 @@ export function AnalyticsPage() {
 
       {/* Browser activity (from extension) */}
       {profiles.length > 0 && (
-        <BrowserActivitySection rows={browserRows} profiles={profiles} />
+        <BrowserActivitySection
+          rows={browserRows}
+          profiles={profiles}
+          flaggedDomains={new Set(distractionEvents.filter((e) => e.action === 'break' || e.action === 'override').map((e) => e.domain))}
+        />
       )}
 
       {/* Distraction events */}
@@ -120,10 +124,11 @@ export function AnalyticsPage() {
   )
 }
 
-const ACTION_LABEL: Record<string, string> = {
-  explained: 'Explained & continued',
-  break: 'Took a break',
-  lock_in: 'Locked in',
+const ACTION_LABEL: Record<string, { label: string; colour: string }> = {
+  explained: { label: 'Explained & continued', colour: 'text-emerald-400' },
+  break:     { label: 'Took a break',          colour: 'text-amber-400'   },
+  lock_in:   { label: 'Locked in',             colour: 'text-red-400'     },
+  override:  { label: 'Overrode AI ⚑',        colour: 'text-red-400'     },
 }
 
 function DistractionSection({ events, profiles }: { events: DistractionEvent[]; profiles: Profile[] }) {
@@ -151,18 +156,23 @@ function DistractionSection({ events, profiles }: { events: DistractionEvent[]; 
                 <span className="text-emerald-400">{approved} explained</span>
                 <span className="text-amber-400">{breaks} breaks</span>
                 <span className="text-red-400">{lockIns} locked in</span>
+                {mine.filter((e) => e.action === 'override').length > 0 && (
+                  <span className="text-red-400 font-medium">
+                    {mine.filter((e) => e.action === 'override').length} overrode AI ⚑
+                  </span>
+                )}
               </div>
               <div className="space-y-2">
-                {mine.slice(0, 5).map((e) => (
-                  <div key={e.id} className="rounded-lg border border-slate-800 bg-slate-900 p-2.5">
+                {mine.slice(0, 5).map((e) => {
+                  const meta = ACTION_LABEL[e.action] ?? { label: e.action, colour: 'text-slate-500' }
+                  return (
+                  <div key={e.id} className={cn(
+                    'rounded-lg border p-2.5',
+                    e.action === 'override' ? 'border-red-900/50 bg-red-950/20' : 'border-slate-800 bg-slate-900',
+                  )}>
                     <div className="flex items-center justify-between gap-2">
                       <span className="truncate text-[11px] font-medium text-slate-300">{e.domain}</span>
-                      <span className={cn('shrink-0 text-[10px]',
-                        e.action === 'explained' ? 'text-emerald-400' :
-                        e.action === 'break' ? 'text-amber-400' : 'text-red-400',
-                      )}>
-                        {ACTION_LABEL[e.action]}
-                      </span>
+                      <span className={cn('shrink-0 text-[10px]', meta.colour)}>{meta.label}</span>
                     </div>
                     {e.reason && (
                       <p className="mt-1 truncate text-[10px] text-slate-500">"{e.reason}"</p>
@@ -171,7 +181,8 @@ function DistractionSection({ events, profiles }: { events: DistractionEvent[]; 
                       <p className="mt-1 text-[10px] text-red-400">{e.ai_message}</p>
                     )}
                   </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
           )
@@ -184,9 +195,11 @@ function DistractionSection({ events, profiles }: { events: DistractionEvent[]; 
 function BrowserActivitySection({
   rows,
   profiles,
+  flaggedDomains,
 }: {
   rows: BrowserActivityRow[]
   profiles: Profile[]
+  flaggedDomains: Set<string>
 }) {
   if (rows.length === 0) {
     return (
@@ -225,16 +238,23 @@ function BrowserActivitySection({
                 </span>
               </div>
               <div className="space-y-1.5">
-                {domains.map((d) => (
+                {domains.map((d) => {
+                  const flagged = flaggedDomains.has(d.domain)
+                  return (
                   <div key={d.domain} className="flex items-center gap-2">
-                    <Globe size={11} className="shrink-0 text-slate-600" />
-                    <span className="min-w-0 flex-1 truncate text-[11px] text-slate-300">{d.domain}</span>
-                    <span className="shrink-0 text-[10px] text-slate-500">{formatHours(d.active_sec)}</span>
+                    <Globe size={11} className={cn('shrink-0', flagged ? 'text-red-500' : 'text-slate-600')} />
+                    <span className={cn('min-w-0 flex-1 truncate text-[11px]', flagged ? 'text-red-400' : 'text-slate-300')}>
+                      {d.domain}{flagged && ' ⚑'}
+                    </span>
+                    <span className={cn('shrink-0 text-[10px]', flagged ? 'text-red-400' : 'text-slate-500')}>
+                      {formatHours(d.active_sec)}
+                    </span>
                     <span className="shrink-0 text-[10px] text-slate-600">
                       {d.keystrokes > 0 && `${d.keystrokes}k`}
                     </span>
                   </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
           )

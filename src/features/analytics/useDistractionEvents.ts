@@ -7,7 +7,7 @@ export interface DistractionEvent {
   recorded_at: string
   domain: string
   reason: string | null
-  action: 'explained' | 'break' | 'lock_in'
+  action: 'explained' | 'break' | 'lock_in' | 'override'
   ai_approved: boolean | null
   ai_message: string | null
 }

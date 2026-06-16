@@ -60,7 +60,22 @@ function showDistractionOverlay() {
   ].join(';')
 
   overlay.innerHTML = `
-    <div style="background:#1e293b;border:1px solid #334155;border-radius:16px;padding:28px;max-width:440px;width:90%;box-shadow:0 25px 60px rgba(0,0,0,0.6);color:#e2e8f0">
+    <div style="position:relative;background:#1e293b;border:1px solid #334155;border-radius:16px;padding:28px;max-width:440px;width:90%;box-shadow:0 25px 60px rgba(0,0,0,0.6);color:#e2e8f0">
+
+      <!-- Override button — top right, very subtle -->
+      <div id="tandem-override-wrap" style="position:absolute;top:16px;right:18px;text-align:right">
+        <button id="tandem-override-btn" style="background:none;border:none;color:#334155;font-size:11px;cursor:pointer;padding:0;line-height:1" title="Override AI check (flagged to partner)">
+          override AI
+        </button>
+        <div id="tandem-override-confirm" style="display:none;margin-top:5px;background:#1e293b;border:1px solid #ef4444;border-radius:8px;padding:8px 10px;font-size:11px;color:#fca5a5;min-width:180px">
+          ⚠️ This will be flagged<br>to your partner.
+          <div style="display:flex;gap:6px;margin-top:7px">
+            <button id="tandem-override-yes" style="flex:1;padding:4px 0;border:1px solid #ef4444;border-radius:6px;background:transparent;color:#f87171;font-size:11px;cursor:pointer">Yes, override</button>
+            <button id="tandem-override-cancel" style="flex:1;padding:4px 0;border:1px solid #334155;border-radius:6px;background:transparent;color:#64748b;font-size:11px;cursor:pointer">Cancel</button>
+          </div>
+        </div>
+      </div>
+
       <div style="font-size:20px;font-weight:600;margin-bottom:8px">⏱️ Timer is running</div>
       <p style="color:#94a3b8;font-size:14px;line-height:1.6;margin:0 0 18px">
         This site is usually one used for relaxing — but your timer is still going.
@@ -81,10 +96,10 @@ function showDistractionOverlay() {
       <div id="tandem-ai-msg" style="display:none;margin-top:10px;padding:9px 12px;border-radius:8px;font-size:13px;line-height:1.5"></div>
 
       <div style="display:flex;gap:8px;margin-top:14px">
-        <button id="tandem-btn-break" style="flex:1;padding:10px;border:1px solid #475569;border-radius:8px;background:transparent;color:#94a3b8;font-size:13px;cursor:pointer;transition:color .15s">
+        <button id="tandem-btn-break" style="flex:1;padding:10px;border:1px solid #475569;border-radius:8px;background:transparent;color:#94a3b8;font-size:13px;cursor:pointer">
           I am taking a break
         </button>
-        <button id="tandem-btn-lockin" style="flex:1;padding:10px;border:1px solid #ef4444;border-radius:8px;background:transparent;color:#f87171;font-size:13px;cursor:pointer;transition:color .15s">
+        <button id="tandem-btn-lockin" style="flex:1;padding:10px;border:1px solid #ef4444;border-radius:8px;background:transparent;color:#f87171;font-size:13px;cursor:pointer">
           I am distracted — lock in
         </button>
       </div>
@@ -160,8 +175,26 @@ function showDistractionOverlay() {
   })
 
   document.getElementById('tandem-btn-lockin').addEventListener('click', () => {
-    // Navigate the current tab away to Tandem — strongest commitment signal
     try { chrome.runtime.sendMessage({ type: 'distraction:action', action: 'lock_in', domain }) } catch { /* ok */ }
+  })
+
+  // Override button — reveal confirmation, then force-dismiss if confirmed
+  document.getElementById('tandem-override-btn').addEventListener('click', () => {
+    document.getElementById('tandem-override-confirm').style.display = 'block'
+    document.getElementById('tandem-override-btn').style.display = 'none'
+  })
+
+  document.getElementById('tandem-override-cancel').addEventListener('click', () => {
+    document.getElementById('tandem-override-confirm').style.display = 'none'
+    document.getElementById('tandem-override-btn').style.display = 'inline'
+  })
+
+  document.getElementById('tandem-override-yes').addEventListener('click', () => {
+    const reason = document.getElementById('tandem-reason').value.trim()
+    try {
+      chrome.runtime.sendMessage({ type: 'distraction:action', action: 'override', domain, reason })
+    } catch { /* ok */ }
+    overlay.remove()
   })
 }
 

@@ -75,6 +75,15 @@ export interface WorkSession {
   events: Record<string, unknown> | null
 }
 
+export interface Screenshot {
+  id: string
+  session_id: string | null
+  user_id: string
+  storage_path: string
+  taken_at: string
+  expires_at: string | null
+}
+
 export interface Settings {
   user_id: string
   screenshots_enabled: boolean

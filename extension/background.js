@@ -219,14 +219,16 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
     return true
   }
 
-  // User chose break or lock-in — log it and navigate
+  // User chose break, lock-in, or override — log it and navigate
   if (msg.type === 'distraction:action') {
     getValidAuth().then((auth) => {
-      if (auth) void callCheckDistraction(auth, { domain: msg.domain, action: msg.action })
-      // For both actions, open Tandem (break → stop timer; lock_in → get back to work)
-      chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
-        if (tab?.id) chrome.tabs.update(tab.id, { url: TANDEM_URL })
-      })
+      if (auth) void callCheckDistraction(auth, { domain: msg.domain, reason: msg.reason ?? null, action: msg.action })
+      // Override stays on the page; break and lock-in navigate to Tandem
+      if (msg.action !== 'override') {
+        chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
+          if (tab?.id) chrome.tabs.update(tab.id, { url: TANDEM_URL })
+        })
+      }
     })
   }
 })
