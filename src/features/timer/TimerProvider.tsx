@@ -155,51 +155,55 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     return () => { supabase.removeChannel(channel) }
   }, [running, user])
 
-  // ── Visibility listener ─────────────────────────────────────────────────
-  // On hide: freeze the active stretch so background time isn't auto-counted
-  // unless/until the Tauri heartbeat resumes it.
-  // On show:
-  //   • Small gap (< IDLE_THRESHOLD, or Tauri kept updating hiddenAtRef):
-  //     resume as active — just a brief switch.
-  //   • Large gap with no Tauri activity: show idle prompt so the user can
-  //     classify the time as work, break, etc.
+  // ── Focus / blur listener ────────────────────────────────────────────────
+  // `window.blur` fires whenever HearthHall loses keyboard focus — whether
+  // the user switches tabs, buries the window under another app, or minimizes.
+  // This is a superset of visibilitychange and catches the "buried window" case.
+  //
+  // On blur:  freeze the active stretch.
+  // On focus:
+  //   • Gap < IDLE_THRESHOLD (or Tauri kept hiddenAtRef fresh): resume active.
+  //   • Gap ≥ IDLE_THRESHOLD with no Tauri heartbeats: show idle prompt.
 
   useEffect(() => {
     if (!running) return
-    function onVisibility() {
+
+    function onBlur() {
       const now = Date.now()
-      if (document.hidden) {
-        appHiddenRef.current = true
-        hiddenAtRef.current = now
-        // Freeze active time at the moment we left.
-        commitActiveAt(now)
-      } else {
-        appHiddenRef.current = false
-        const hiddenAt = hiddenAtRef.current ?? now
-        const awayMs = now - hiddenAt
-        hiddenAtRef.current = null
-
-        if (awayMs < IDLE_THRESHOLD_SEC * 1000) {
-          // Short gap (or Tauri heartbeats have been keeping hiddenAtRef recent)
-          // — resume the active stretch if it isn't already running.
-          if (activeStartRef.current === null) {
-            activeStartRef.current = now
-          }
-        } else if (!idlePromptRef.current) {
-          // Long gap with no Tauri activity — ask what they were doing.
-          if (activeStartRef.current !== null) commitActiveAt(now)
-          idlePromptStartRef.current = hiddenAt + IDLE_THRESHOLD_SEC * 1000
-          idlePromptRef.current = true
-          setIdlePrompt(true)
-          setPendingIdleSec(Math.floor((now - idlePromptStartRef.current) / 1000))
-        }
-
-        lastActivityRef.current = now
-        setActiveSec(calcActiveSec())
-      }
+      appHiddenRef.current = true
+      hiddenAtRef.current = now
+      commitActiveAt(now)
     }
-    document.addEventListener('visibilitychange', onVisibility)
-    return () => document.removeEventListener('visibilitychange', onVisibility)
+
+    function onFocus() {
+      appHiddenRef.current = false
+      const now = Date.now()
+      const hiddenAt = hiddenAtRef.current ?? now
+      const awayMs = now - hiddenAt
+      hiddenAtRef.current = null
+
+      if (awayMs < IDLE_THRESHOLD_SEC * 1000) {
+        // Brief absence (or Tauri heartbeats slid hiddenAtRef forward) — resume.
+        if (activeStartRef.current === null) activeStartRef.current = now
+      } else if (!idlePromptRef.current) {
+        // Long absence with no Tauri activity — ask what they were doing.
+        if (activeStartRef.current !== null) commitActiveAt(now)
+        idlePromptStartRef.current = hiddenAt + IDLE_THRESHOLD_SEC * 1000
+        idlePromptRef.current = true
+        setIdlePrompt(true)
+        setPendingIdleSec(Math.floor((now - idlePromptStartRef.current) / 1000))
+      }
+
+      lastActivityRef.current = now
+      setActiveSec(calcActiveSec())
+    }
+
+    window.addEventListener('blur', onBlur)
+    window.addEventListener('focus', onFocus)
+    return () => {
+      window.removeEventListener('blur', onBlur)
+      window.removeEventListener('focus', onFocus)
+    }
   }, [running])
 
   // ── Ticker ───────────────────────────────────────────────────────────────
