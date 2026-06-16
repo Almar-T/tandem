@@ -56,10 +56,11 @@ fn update_tray_status(app: &tauri::AppHandle, email: &str) {
 }
 
 fn build_menu(app: &tauri::AppHandle, status_label: &str) -> tauri::Result<Menu<tauri::Wry>> {
-    let status = MenuItem::with_id(app, "status", status_label, false, None::<&str>)?;
-    let open   = MenuItem::with_id(app, "open",   "Open / Sign in",  true,  None::<&str>)?;
-    let quit   = MenuItem::with_id(app, "quit",   "Quit Tandem",     true,  None::<&str>)?;
-    Menu::with_items(app, &[&status, &open, &quit])
+    let status  = MenuItem::with_id(app, "status",  status_label,       false, None::<&str>)?;
+    let open    = MenuItem::with_id(app, "open",    "Open / Sign in",   true,  None::<&str>)?;
+    let update  = MenuItem::with_id(app, "update",  "Check for updates", true, None::<&str>)?;
+    let quit    = MenuItem::with_id(app, "quit",    "Quit",             true,  None::<&str>)?;
+    Menu::with_items(app, &[&status, &open, &update, &quit])
 }
 
 // ─── Main ────────────────────────────────────────────────────────────────────
@@ -69,6 +70,7 @@ fn main() {
     let tracker_auth = auth_state.clone();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(auth_state)
         .setup(move |app| {
             // Tray-only app on macOS — hide from Dock
@@ -92,8 +94,14 @@ fn main() {
                 .icon_as_template(true) // macOS: adapts to light/dark mode
                 .menu(&menu)
                 .on_menu_event(|app, event| match event.id.as_ref() {
-                    "quit" => app.exit(0),
-                    "open" => show_window(app),
+                    "quit"   => app.exit(0),
+                    "open"   => show_window(app),
+                    "update" => {
+                        let handle = app.clone();
+                        tauri::async_runtime::spawn(async move {
+                            check_update(handle).await;
+                        });
+                    }
                     _ => {}
                 })
                 .on_tray_icon_event(|tray, event| {
@@ -121,5 +129,24 @@ fn show_window(app: &tauri::AppHandle) {
     if let Some(win) = app.get_webview_window("main") {
         let _ = win.show();
         let _ = win.set_focus();
+    }
+}
+
+async fn check_update(app: tauri::AppHandle) {
+    use tauri_plugin_updater::UpdaterExt;
+    match app.updater() {
+        Ok(updater) => match updater.check().await {
+            Ok(Some(update)) => {
+                eprintln!("[updater] new version {} available, downloading…", update.version);
+                if let Err(e) = update.download_and_install(|_, _| {}, || {}).await {
+                    eprintln!("[updater] install error: {e}");
+                } else {
+                    app.restart();
+                }
+            }
+            Ok(None) => eprintln!("[updater] already up to date"),
+            Err(e)   => eprintln!("[updater] check failed: {e}"),
+        },
+        Err(e) => eprintln!("[updater] init failed: {e}"),
     }
 }

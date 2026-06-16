@@ -23,6 +23,17 @@
       "csp": "default-src 'self' tauri: asset:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'"
     }
   },
+  "plugins": {
+    "updater": {
+      "pubkey": "UPDATER_PUBLIC_KEY_PLACEHOLDER",
+      "endpoints": [
+        "https://almar-t.github.io/tandem/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  },
   "bundle": {
     "active": true,
     "targets": "all",

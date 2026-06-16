@@ -28,24 +28,27 @@ jobs:
           body: |
             ## HearthHall Desktop Companion + Browser Extension
 
-            ### Browser Extension (Chrome)
+            ### Browser Extension (Chrome) — first time only
             1. Download **hearth-hall-extension.zip** below and unzip it
-            2. Open Chrome → `chrome://extensions` → enable **Developer mode**
-            3. Click **Load unpacked** → select the unzipped `extension/` folder
+            2. Chrome → `chrome://extensions` → enable **Developer mode**
+            3. **Load unpacked** → select the unzipped folder
             4. Sign in with your HearthHall email in the extension popup
 
+            > **Already installed?** The extension auto-updates — just reload it in `chrome://extensions` after your machine pulls the latest changes.
+
             ### Desktop App (activity tracker)
-            | Platform | File to download |
-            |----------|-----------------|
+            | Platform | File |
+            |----------|------|
             | macOS (Apple Silicon + Intel) | `.dmg` |
             | Windows | `.exe` installer |
 
-            Open the installer, follow the prompts. The app runs in your menu bar / system tray and tracks which app is active while your HearthHall timer is running.
+            Run the installer and the app will appear in your menu bar / system tray.
+            Future updates are automatic — the app checks on startup and prompts you to install.
           files: hearth-hall-extension.zip
           draft: false
           prerelease: false
 
-  # Step 2 — build the Tauri app for macOS (universal) and Windows in parallel
+  # Step 2 — build Tauri for macOS (universal) and Windows in parallel
   build-tauri:
     needs: create-release
     strategy:
@@ -71,7 +74,91 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           releaseId: ${{ needs.create-release.outputs.release-id }}
           projectPath: ./desktop
           args: ${{ matrix.args }}
+
+  # Step 3 — after both builds finish, generate latest.json for the auto-updater
+  # and commit it to public/ so it gets deployed to GitHub Pages automatically.
+  publish-update-json:
+    needs: [create-release, build-tauri]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Generate latest.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          python3 - <<'EOF'
+          import json, os, urllib.request, urllib.error
+
+          tag   = os.environ["TAG"]
+          token = os.environ["GITHUB_TOKEN"]
+          repo  = "Almar-T/tandem"
+          version = tag.lstrip("v")
+
+          def api(url):
+              req = urllib.request.Request(url, headers={"Authorization": f"token {token}", "Accept": "application/vnd.github+json"})
+              with urllib.request.urlopen(req) as r:
+                  return json.loads(r.read())
+
+          def text(url):
+              req = urllib.request.Request(url, headers={"Authorization": f"token {token}"})
+              with urllib.request.urlopen(req) as r:
+                  return r.read().decode()
+
+          release = api(f"https://api.github.com/repos/{repo}/releases/tags/{tag}")
+          assets  = {a["name"]: a["browser_download_url"] for a in release["assets"]}
+
+          def find(suffix):
+              for name, url in assets.items():
+                  if name.endswith(suffix):
+                      return url
+              return None
+
+          platforms = {}
+
+          mac_gz  = find(".dmg.tar.gz")
+          mac_sig = find(".dmg.tar.gz.sig")
+          if mac_gz and mac_sig:
+              sig = text(mac_sig).strip()
+              platforms["darwin-aarch64"] = {"signature": sig, "url": mac_gz}
+              platforms["darwin-x86_64"]  = {"signature": sig, "url": mac_gz}
+
+          win_zip = find(".msi.zip")
+          win_sig = find(".msi.zip.sig")
+          if win_zip and win_sig:
+              sig = text(win_sig).strip()
+              platforms["windows-x86_64"] = {"signature": sig, "url": win_zip}
+
+          data = {
+              "version":  version,
+              "notes":    release.get("body", ""),
+              "pub_date": release["published_at"],
+              "platforms": platforms
+          }
+
+          os.makedirs("public", exist_ok=True)
+          with open("public/latest.json", "w") as f:
+              json.dump(data, f, indent=2)
+
+          print(f"Wrote public/latest.json for {version} with {len(platforms)} platforms")
+          EOF
+
+      - name: Commit latest.json
+        run: |
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git add public/latest.json
+          git diff --cached --quiet && echo "No changes to commit" && exit 0
+          git commit -m "chore: update desktop release manifest to ${{ github.ref_name }}"
+          git push origin main
