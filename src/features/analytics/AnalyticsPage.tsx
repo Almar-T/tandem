@@ -8,6 +8,7 @@ import { useTasks } from '@/features/tasks/useTasks'
 import { useWorkSessions } from './useWorkSessions'
 import { dailyActive, filterRange, formatHours, totalsFor, type Range } from './analytics'
 import { useBrowserActivity, summariseByDomain, type BrowserActivityRow } from './useBrowserActivity'
+import { useDistractionEvents, type DistractionEvent } from './useDistractionEvents'
 
 const USER_BAR = ['bg-indigo-500', 'bg-emerald-500']
 const USER_DOT = ['text-indigo-400', 'text-emerald-400']
@@ -24,6 +25,7 @@ export function AnalyticsPage() {
   const { data: tasks = [] } = useTasks()
   const [range, setRange] = useState<Range>(7)
   const { data: browserRows = [] } = useBrowserActivity(range === 0 ? 0 : range)
+  const { data: distractionEvents = [] } = useDistractionEvents(range === 0 ? 0 : range)
 
   const scoped = useMemo(() => filterRange(sessions, range), [sessions, range])
   const userIds = profiles.map((p) => p.id)
@@ -109,6 +111,72 @@ export function AnalyticsPage() {
       {profiles.length > 0 && (
         <BrowserActivitySection rows={browserRows} profiles={profiles} />
       )}
+
+      {/* Distraction events */}
+      {profiles.length > 0 && (
+        <DistractionSection events={distractionEvents} profiles={profiles} />
+      )}
+    </div>
+  )
+}
+
+const ACTION_LABEL: Record<string, string> = {
+  explained: 'Explained & continued',
+  break: 'Took a break',
+  lock_in: 'Locked in',
+}
+
+function DistractionSection({ events, profiles }: { events: DistractionEvent[]; profiles: Profile[] }) {
+  if (events.length === 0) return null
+
+  return (
+    <div className="space-y-3">
+      <h2 className="text-sm font-medium text-slate-300">Distraction alerts</h2>
+      <div className="grid gap-3 sm:grid-cols-2">
+        {profiles.map((p, i) => {
+          const mine = events.filter((e) => e.user_id === p.id)
+          if (mine.length === 0) return null
+          const approved = mine.filter((e) => e.ai_approved === true).length
+          const lockIns = mine.filter((e) => e.action === 'lock_in').length
+          const breaks = mine.filter((e) => e.action === 'break').length
+          return (
+            <div key={p.id} className="rounded-2xl border border-slate-800 bg-slate-900/50 p-4">
+              <div className="mb-3 flex items-center justify-between">
+                <span className={cn('text-sm font-medium', USER_DOT[i % USER_DOT.length])}>
+                  {p.display_name}
+                </span>
+                <span className="text-[11px] text-slate-500">{mine.length} alerts</span>
+              </div>
+              <div className="mb-3 flex gap-3 text-[11px]">
+                <span className="text-emerald-400">{approved} explained</span>
+                <span className="text-amber-400">{breaks} breaks</span>
+                <span className="text-red-400">{lockIns} locked in</span>
+              </div>
+              <div className="space-y-2">
+                {mine.slice(0, 5).map((e) => (
+                  <div key={e.id} className="rounded-lg border border-slate-800 bg-slate-900 p-2.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate text-[11px] font-medium text-slate-300">{e.domain}</span>
+                      <span className={cn('shrink-0 text-[10px]',
+                        e.action === 'explained' ? 'text-emerald-400' :
+                        e.action === 'break' ? 'text-amber-400' : 'text-red-400',
+                      )}>
+                        {ACTION_LABEL[e.action]}
+                      </span>
+                    </div>
+                    {e.reason && (
+                      <p className="mt-1 truncate text-[10px] text-slate-500">"{e.reason}"</p>
+                    )}
+                    {e.ai_message && e.action === 'explained' && !e.ai_approved && (
+                      <p className="mt-1 text-[10px] text-red-400">{e.ai_message}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }

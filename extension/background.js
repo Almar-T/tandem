@@ -1,6 +1,7 @@
 // ─── Config ──────────────────────────────────────────────────────────────────
 const SUPABASE_URL = 'https://zcyxixadcqmwarmnysxg.supabase.co'
 const SUPABASE_ANON_KEY = 'sb_publishable_j0giWNW4qSA7geUwOHCMYA_ZaYgK7it'
+const TANDEM_URL = 'https://almar-t.github.io/tandem/'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -64,17 +65,19 @@ async function signOut() {
   await chrome.storage.local.remove('auth')
 }
 
-// ─── Timer gate ───────────────────────────────────────────────────────────────
-// Only flush data when the user has an active Tandem timer session.
+// ─── Timer state (cached 60 s to avoid hammering Supabase) ───────────────────
 
-async function isTimerRunning(auth) {
+async function checkTimerRunning(auth) {
+  const { timerCache } = await chrome.storage.local.get('timerCache')
+  if (timerCache && Date.now() - timerCache.ts < 60_000) return timerCache.running
+
   const res = await fetch(
     `${SUPABASE_URL}/rest/v1/work_sessions?user_id=eq.${auth.user_id}&ended_at=is.null&select=id&limit=1`,
     { headers: { apikey: SUPABASE_ANON_KEY, Authorization: `Bearer ${auth.access_token}` } },
   )
-  if (!res.ok) return false
-  const rows = await res.json()
-  return rows.length > 0
+  const running = res.ok && (await res.json()).length > 0
+  await chrome.storage.local.set({ timerCache: { running, ts: Date.now() } })
+  return running
 }
 
 // ─── Activity buffer ──────────────────────────────────────────────────────────
@@ -88,7 +91,6 @@ async function setPending(pending) {
   await chrome.storage.local.set({ pending })
 }
 
-// Only tracks domain — no full URLs, no page titles, no content.
 async function accumulate(domain, keystrokes, clicks, activeSec) {
   if (!domain) return
   const pending = await getPending()
@@ -103,12 +105,8 @@ async function flushPending() {
   const auth = await getValidAuth()
   if (!auth) return
 
-  // Gate: discard and reset if the Tandem timer isn't running.
-  const timerActive = await isTimerRunning(auth)
-  if (!timerActive) {
-    await setPending({})
-    return
-  }
+  const timerActive = await checkTimerRunning(auth)
+  if (!timerActive) { await setPending({}); return }
 
   const pending = await getPending()
   const entries = Object.entries(pending)
@@ -117,7 +115,7 @@ async function flushPending() {
   const rows = entries.map(([domain, d]) => ({
     user_id: auth.user_id,
     domain,
-    url: domain, // only the domain is stored, never the full path
+    url: domain,
     keystrokes: d.keystrokes,
     clicks: d.clicks,
     active_sec: d.active_sec,
@@ -133,9 +131,7 @@ async function flushPending() {
     },
     body: JSON.stringify(rows),
   })
-
   if (res.ok) await setPending({})
-  // On failure, data stays in pending and retries on next alarm.
 }
 
 // ─── Tab time tracking ────────────────────────────────────────────────────────
@@ -177,14 +173,61 @@ chrome.windows.onFocusChanged.addListener((windowId) => {
   }
 })
 
+// ─── Distraction: call Edge Function ─────────────────────────────────────────
+
+async function callCheckDistraction(auth, payload) {
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/check-distraction`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${auth.access_token}`,
+    },
+    body: JSON.stringify(payload),
+  })
+  return res.ok ? await res.json() : { approved: false, message: 'Could not reach Tandem — try again.' }
+}
+
 // ─── Content-script messages ──────────────────────────────────────────────────
 
-chrome.runtime.onMessage.addListener((msg, sender) => {
+chrome.runtime.onMessage.addListener((msg, sender, reply) => {
+  // Keystroke/click counts from any page
   if (msg.type === 'activity' && sender.tab) {
     const domain = getDomain(sender.tab.url || '')
     if (domain && isTrackable(sender.tab.url || '')) {
       void accumulate(domain, msg.keystrokes, msg.clicks, 0)
     }
+  }
+
+  // Content script asking whether to show the distraction overlay
+  if (msg.type === 'content:checkTimer') {
+    getValidAuth()
+      .then((auth) => auth ? checkTimerRunning(auth) : false)
+      .then((running) => reply({ running }))
+      .catch(() => reply({ running: false }))
+    return true
+  }
+
+  // User submitted an explanation — send to AI for approval
+  if (msg.type === 'distraction:explain') {
+    getValidAuth()
+      .then((auth) => auth
+        ? callCheckDistraction(auth, { domain: msg.domain, reason: msg.reason, action: 'explained' })
+        : { approved: false, message: 'Not signed in to Tandem.' })
+      .then((res) => reply(res))
+      .catch(() => reply({ approved: false, message: 'Error — try again.' }))
+    return true
+  }
+
+  // User chose break or lock-in — log it and navigate
+  if (msg.type === 'distraction:action') {
+    getValidAuth().then((auth) => {
+      if (auth) void callCheckDistraction(auth, { domain: msg.domain, action: msg.action })
+      // For both actions, open Tandem (break → stop timer; lock_in → get back to work)
+      chrome.tabs.query({ active: true, currentWindow: true }, ([tab]) => {
+        if (tab?.id) chrome.tabs.update(tab.id, { url: TANDEM_URL })
+      })
+    })
   }
 })
 
@@ -201,6 +244,8 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
       activeTabStartedAt = Date.now()
     }
   }
+  // Invalidate timer cache so next check is fresh
+  await chrome.storage.local.remove('timerCache')
   await flushPending()
 })
 
