@@ -16,7 +16,7 @@ import { GoalEditor } from '@/features/goals/GoalEditor'
 import { goalProgress } from '@/features/goals/goalProgress'
 import { useWorkSessions } from '@/features/analytics/useWorkSessions'
 import { useProfiles } from '@/features/profiles/useProfiles'
-import { filterRange, totalsFor, formatHours } from '@/features/analytics/analytics'
+import { totalsFor, formatHours } from '@/features/analytics/analytics'
 import { ManualHoursModal } from '@/features/timer/ManualHoursModal'
 import { useTimer } from '@/features/timer/TimerProvider'
 import { supabase } from '@/lib/supabase'
@@ -381,7 +381,10 @@ function DashboardAnalytics() {
   const { data: sessions = [] } = useWorkSessions()
   const { data: profiles = [] } = useProfiles()
 
-  const week = useMemo(() => filterRange(sessions, 7), [sessions])
+  const week = useMemo(() => {
+    const weekStart = startOfWeek(new Date(), { weekStartsOn: 1 })
+    return sessions.filter((s) => new Date(s.started_at) >= weekStart)
+  }, [sessions])
 
   if (profiles.length === 0) return null
 
@@ -404,8 +407,8 @@ function DashboardAnalytics() {
               >
                 {p.display_name}
               </p>
-              <p className="font-serif text-2xl font-bold text-hearth-green">{formatHours(t.active)}</p>
-              <p className="text-xs text-hearth-text/50">productive · {t.sessions} sessions</p>
+              <p className="font-serif text-2xl font-bold text-hearth-green">{formatHours(t.active + t.explained)}</p>
+              <p className="text-xs text-hearth-text/50">total logged · {t.sessions} sessions</p>
               <div className="ml-auto flex gap-3 text-[11px] text-hearth-text/50">
                 <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-sm bg-productive" /> {formatHours(t.active)}</span>
                 <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-sm bg-explained" /> {formatHours(t.explained)}</span>

@@ -253,9 +253,9 @@ function UserSection({
           <span className="font-serif text-base font-semibold" style={{ color }}>
             {profile.display_name}
           </span>
-          <span className="font-serif text-2xl font-bold text-hearth-green">{formatHours(t.active)}</span>
+          <span className="font-serif text-2xl font-bold text-hearth-green">{formatHours(t.active + t.explained)}</span>
           <span className="text-xs text-hearth-text/50">
-            productive · {t.sessions} sessions
+            total logged · {t.sessions} sessions
             {completed > 0 && ` · ${completed} tasks done`}
           </span>
           <div className="ml-auto flex flex-wrap gap-3 text-[11px] text-hearth-text/50">
