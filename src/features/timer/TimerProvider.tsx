@@ -126,7 +126,7 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     // Restart active stretch if it was frozen by idle detection.
     if (activeStartRef.current === null) activeStartRef.current = now
 
-    if (!appHiddenRef.current) setActiveSec(calcActiveSec())
+    if (!document.hidden) setActiveSec(calcActiveSec())
   }
 
   // ── Browser extension activity feed ─────────────────────────────────────
@@ -242,8 +242,8 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     const id = setInterval(() => {
       const now = Date.now()
 
-      // While hidden: active time is frozen. Visibility handlers handle the return.
-      if (appHiddenRef.current) return
+      // Only freeze the display when the tab is actually hidden (not just unfocused).
+      if (document.hidden) return
 
       if (idlePromptRef.current) {
         setPendingIdleSec(calcPendingIdleSec())
