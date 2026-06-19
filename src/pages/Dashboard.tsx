@@ -495,6 +495,11 @@ function BottomCluster({
 
   return (
     <div className="fixed bottom-6 right-6 z-40 flex flex-col items-end gap-2">
+      {t.startError && (
+        <div className="max-w-[220px] rounded-xl border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-700 shadow-sm">
+          {t.startError}
+        </div>
+      )}
       <button
         onClick={() => (t.running ? t.stop() : t.start())}
         className={cn(

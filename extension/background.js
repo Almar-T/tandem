@@ -65,11 +65,11 @@ async function signOut() {
   await chrome.storage.local.remove('auth')
 }
 
-// ─── Timer state (cached 60 s to avoid hammering Supabase) ───────────────────
+// ─── Timer state (cached 15 s to avoid hammering Supabase) ───────────────────
 
 async function checkTimerRunning(auth) {
   const { timerCache } = await chrome.storage.local.get('timerCache')
-  if (timerCache && Date.now() - timerCache.ts < 60_000) return timerCache.running
+  if (timerCache && Date.now() - timerCache.ts < 15_000) return timerCache.running
 
   const res = await fetch(
     `${SUPABASE_URL}/rest/v1/work_sessions?user_id=eq.${auth.user_id}&ended_at=is.null&select=id&limit=1`,
@@ -101,37 +101,46 @@ async function accumulate(domain, keystrokes, clicks, activeSec) {
   await setPending(pending)
 }
 
+// Guard prevents concurrent flushes from the alarm and the immediate-flush path.
+let flushing = false
+
 async function flushPending() {
-  const auth = await getValidAuth()
-  if (!auth) return
+  if (flushing) return
+  flushing = true
+  try {
+    const auth = await getValidAuth()
+    if (!auth) return
 
-  const timerActive = await checkTimerRunning(auth)
-  if (!timerActive) { await setPending({}); return }
+    const timerActive = await checkTimerRunning(auth)
+    if (!timerActive) { await setPending({}); return }
 
-  const pending = await getPending()
-  const entries = Object.entries(pending)
-  if (entries.length === 0) return
+    const pending = await getPending()
+    const entries = Object.entries(pending)
+    if (entries.length === 0) return
 
-  const rows = entries.map(([domain, d]) => ({
-    user_id: auth.user_id,
-    domain,
-    url: domain,
-    keystrokes: d.keystrokes,
-    clicks: d.clicks,
-    active_sec: d.active_sec,
-  }))
+    const rows = entries.map(([domain, d]) => ({
+      user_id: auth.user_id,
+      domain,
+      url: domain,
+      keystrokes: d.keystrokes,
+      clicks: d.clicks,
+      active_sec: d.active_sec,
+    }))
 
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/browser_activity`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      apikey: SUPABASE_ANON_KEY,
-      Authorization: `Bearer ${auth.access_token}`,
-      Prefer: 'return=minimal',
-    },
-    body: JSON.stringify(rows),
-  })
-  if (res.ok) await setPending({})
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/browser_activity`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${auth.access_token}`,
+        Prefer: 'return=minimal',
+      },
+      body: JSON.stringify(rows),
+    })
+    if (res.ok) await setPending({})
+  } finally {
+    flushing = false
+  }
 }
 
 // ─── Tab time tracking ────────────────────────────────────────────────────────
@@ -144,7 +153,12 @@ let activeTabStartedAt = Date.now()
 async function onTabFocus(tabId) {
   if (activeTabDomain && isTrackable(activeTabUrl)) {
     const elapsed = Math.round((Date.now() - activeTabStartedAt) / 1000)
-    if (elapsed > 0) await accumulate(activeTabDomain, 0, 0, elapsed)
+    if (elapsed > 0) {
+      const auth = await getValidAuth()
+      if (auth && await checkTimerRunning(auth)) {
+        await accumulate(activeTabDomain, 0, 0, elapsed)
+      }
+    }
   }
   activeTabId = tabId
   activeTabStartedAt = Date.now()
@@ -191,11 +205,17 @@ async function callCheckDistraction(auth, payload) {
 // ─── Content-script messages ──────────────────────────────────────────────────
 
 chrome.runtime.onMessage.addListener((msg, sender, reply) => {
-  // Keystroke/click counts from any page
+  // Keystroke/click counts from any page — accumulate then flush immediately
+  // so HearthHall's Realtime subscription fires within seconds of real activity.
   if (msg.type === 'activity' && sender.tab) {
     const domain = getDomain(sender.tab.url || '')
     if (domain && isTrackable(sender.tab.url || '')) {
-      void accumulate(domain, msg.keystrokes, msg.clicks, 0)
+      getValidAuth().then(async (auth) => {
+        if (auth && await checkTimerRunning(auth)) {
+          await accumulate(domain, msg.keystrokes, msg.clicks, 0)
+          await flushPending()
+        }
+      })
     }
   }
 
@@ -239,15 +259,16 @@ chrome.alarms.create('flush', { periodInMinutes: 1 })
 
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name !== 'flush') return
-  if (activeTabDomain && isTrackable(activeTabUrl)) {
-    const elapsed = Math.round((Date.now() - activeTabStartedAt) / 1000)
-    if (elapsed > 0) {
-      await accumulate(activeTabDomain, 0, 0, elapsed)
-      activeTabStartedAt = Date.now()
-    }
-  }
-  // Invalidate timer cache so next check is fresh
+  // Invalidate cache first so we get a fresh DB check
   await chrome.storage.local.remove('timerCache')
+  const auth = await getValidAuth()
+  const timerActive = auth ? await checkTimerRunning(auth) : false
+  // Only accumulate current-tab time when timer is actually running
+  if (timerActive && activeTabDomain && isTrackable(activeTabUrl)) {
+    const elapsed = Math.round((Date.now() - activeTabStartedAt) / 1000)
+    if (elapsed > 0) await accumulate(activeTabDomain, 0, 0, elapsed)
+  }
+  activeTabStartedAt = Date.now()
   await flushPending()
 })
 

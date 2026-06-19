@@ -21,6 +21,7 @@ interface TimerCtx {
   unexplainedSec: number
   pendingIdleSec: number
   idlePrompt: boolean
+  startError: string | null
   start: (task?: Task | null) => void
   stop: () => void
   explainIdle: (reason: IdleReason) => void
@@ -40,20 +41,23 @@ export function TimerProvider({ children }: { children: ReactNode }) {
   const [unexplainedSec, setUnexplainedSec] = useState(0)
   const [pendingIdleSec, setPendingIdleSec] = useState(0)
   const [idlePrompt, setIdlePrompt]       = useState(false)
+  const [startError, setStartError]       = useState<string | null>(null)
 
   const sessionIdRef       = useRef<string | null>(null)
   const idlePromptRef      = useRef(false)
   const reasonRef          = useRef<IdleReason | null>(null)
   const lastActivityRef    = useRef(Date.now())
   const appHiddenRef       = useRef(false)
-  const hiddenAtRef        = useRef<number | null>(null) // when tab went to background
+
+  // Mirrors `running` state but set synchronously so the always-on
+  // visibility listeners (mounted once, dep array []) see the current value
+  // even during the async Supabase insert in start().
+  const runningRef = useRef(false)
 
   // Timestamp-based accumulators — immune to interval throttling.
-  // Time is always computed as (Date.now() - startTimestamp), so a slow
-  // interval only affects display refresh rate, never accuracy.
-  const activeAccumRef        = useRef(0)              // completed active seconds
-  const activeStartRef        = useRef<number | null>(null) // ms when current active stretch began
-  const idlePromptStartRef    = useRef<number | null>(null) // ms when idle prompt appeared
+  const activeAccumRef        = useRef(0)
+  const activeStartRef        = useRef<number | null>(null)
+  const idlePromptStartRef    = useRef<number | null>(null)
   const explainedAccumRef     = useRef(0)
   const unexplainedAccumRef   = useRef(0)
 
@@ -73,7 +77,6 @@ export function TimerProvider({ children }: { children: ReactNode }) {
       : 0
   }
 
-  // Commit current active stretch to accumulator, up to a specific wall-clock time.
   function commitActiveAt(atMs: number) {
     if (activeStartRef.current !== null) {
       activeAccumRef.current += Math.floor((atMs - activeStartRef.current) / 1000)
@@ -87,7 +90,6 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     function onActivity() {
       lastActivityRef.current = Date.now()
       if (idlePromptRef.current) {
-        // User came back while idle prompt was showing — mark as unexplained.
         const pending = calcPendingIdleSec()
         unexplainedAccumRef.current += pending
         setUnexplainedSec(unexplainedAccumRef.current)
@@ -95,7 +97,6 @@ export function TimerProvider({ children }: { children: ReactNode }) {
         idlePromptRef.current = false
         setIdlePrompt(false)
         setPendingIdleSec(0)
-        // Begin fresh active stretch.
         activeStartRef.current = Date.now()
       }
     }
@@ -104,11 +105,57 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     return () => events.forEach((e) => window.removeEventListener(e, onActivity))
   }, [])
 
+  // ── Shared activity signal handler ──────────────────────────────────────
+  // Called by both the browser-extension Realtime feed and the Tauri heartbeat.
+  // Resets the idle timer and resumes the active stretch if it was frozen.
+
+  function onExternalActivity() {
+    const now = Date.now()
+    lastActivityRef.current = now
+
+    if (idlePromptRef.current) {
+      // User was idle; confirmed active elsewhere — count the prompt period as active.
+      const pending = calcPendingIdleSec()
+      activeAccumRef.current += pending
+      idlePromptStartRef.current = null
+      idlePromptRef.current = false
+      setIdlePrompt(false)
+      setPendingIdleSec(0)
+    }
+
+    // Restart active stretch if it was frozen by idle detection.
+    if (activeStartRef.current === null) activeStartRef.current = now
+
+    if (!appHiddenRef.current) setActiveSec(calcActiveSec())
+  }
+
+  // ── Browser extension activity feed ─────────────────────────────────────
+  // The extension flushes keystrokes + clicks from any tab every ~10 s.
+  // When HearthHall receives an INSERT with confirmed interaction, it means
+  // the user is working somewhere — reset the idle counter.
+
+  useEffect(() => {
+    if (!running || !user) return
+    const channel = supabase
+      .channel('ext-activity')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'browser_activity',
+          filter: `user_id=eq.${user.id}`,
+        },
+        (payload) => {
+          const row = payload.new as { clicks: number; keystrokes: number }
+          if ((row.clicks ?? 0) + (row.keystrokes ?? 0) > 0) onExternalActivity()
+        },
+      )
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [running, user])
+
   // ── Tauri companion heartbeat ────────────────────────────────────────────
-  // The Tauri desktop tracker writes a desktop_activity row every ~60 s
-  // (only while the HearthHall timer is running). Each insert proves the user
-  // is working on the computer. We use that as an activity signal so the web
-  // timer never falsely idles while the user is in Pages, Word, etc.
 
   useEffect(() => {
     if (!running || !user) return
@@ -122,105 +169,83 @@ export function TimerProvider({ children }: { children: ReactNode }) {
           table: 'desktop_activity',
           filter: `user_id=eq.${user.id}`,
         },
-        () => {
-          const now = Date.now()
-          lastActivityRef.current = now
-
-          // If the active stretch was frozen (we're in background), resume it
-          // from when we originally went hidden so the full gap counts as work.
-          if (appHiddenRef.current && activeStartRef.current === null) {
-            activeStartRef.current = hiddenAtRef.current ?? now
-          }
-          // Slide the "hidden since" reference forward so visibilitychange
-          // only sees the gap since the last heartbeat, not the full absence.
-          if (appHiddenRef.current) {
-            hiddenAtRef.current = now
-          }
-
-          // Cancel any idle prompt — Tauri confirms the user was working.
-          if (idlePromptRef.current) {
-            const pending = calcPendingIdleSec()
-            activeAccumRef.current += pending
-            idlePromptStartRef.current = null
-            idlePromptRef.current = false
-            setIdlePrompt(false)
-            setPendingIdleSec(0)
-            activeStartRef.current = now
-          }
-
-          setActiveSec(calcActiveSec())
-        },
+        () => { onExternalActivity() },
       )
       .subscribe()
     return () => { supabase.removeChannel(channel) }
   }, [running, user])
 
-  // ── Focus / blur listener ────────────────────────────────────────────────
-  // `window.blur` fires whenever HearthHall loses keyboard focus — whether
-  // the user switches tabs, buries the window under another app, or minimizes.
-  // This is a superset of visibilitychange and catches the "buried window" case.
+  // ── Visibility / focus listeners (always-on, mounted once) ──────────────
+  // Registered once at mount so they're active during the async Supabase
+  // insert in start() — fixing the race where switching apps before the
+  // insert returns meant blur/focus listeners weren't yet attached.
   //
-  // On blur:  freeze the active stretch.
-  // On focus:
-  //   • Gap < IDLE_THRESHOLD (or Tauri kept hiddenAtRef fresh): resume active.
-  //   • Gap ≥ IDLE_THRESHOLD with no Tauri heartbeats: show idle prompt.
+  // Uses runningRef (set synchronously in start/stop) instead of the
+  // `running` state (which updates asynchronously after render).
+  //
+  // Both visibilitychange (tab switching) and blur/focus (app switching)
+  // are listened to. Guards on appHiddenRef prevent double-processing
+  // when both fire for the same event.
 
   useEffect(() => {
-    if (!running) return
-
-    function onBlur() {
-      const now = Date.now()
+    function onHide() {
+      // Skip if timer not running or already hidden (dedup blur + visibilitychange).
+      // Time keeps accumulating while hidden — no freeze, no commit.
+      if (!runningRef.current || appHiddenRef.current) return
       appHiddenRef.current = true
-      hiddenAtRef.current = now
-      commitActiveAt(now)
     }
 
-    function onFocus() {
+    function onShow() {
+      // Skip if timer not running or not currently hidden (dedup focus + visibilitychange).
+      if (!runningRef.current || !appHiddenRef.current) return
       appHiddenRef.current = false
       const now = Date.now()
-      const hiddenAt = hiddenAtRef.current ?? now
-      const awayMs = now - hiddenAt
-      hiddenAtRef.current = null
+      const sinceActivity = now - lastActivityRef.current
 
-      if (awayMs < IDLE_THRESHOLD_SEC * 1000) {
-        // Brief absence (or Tauri heartbeats slid hiddenAtRef forward) — resume.
-        if (activeStartRef.current === null) activeStartRef.current = now
-      } else if (!idlePromptRef.current) {
-        // Long absence with no Tauri activity — ask what they were doing.
-        if (activeStartRef.current !== null) commitActiveAt(now)
-        idlePromptStartRef.current = hiddenAt + IDLE_THRESHOLD_SEC * 1000
+      if (sinceActivity >= IDLE_THRESHOLD_SEC * 1000 && !idlePromptRef.current) {
+        // No confirmed activity from the app OR extension during the absence.
+        // Commit active time up to the last known activity and show the idle prompt.
+        commitActiveAt(lastActivityRef.current)
+        idlePromptStartRef.current = lastActivityRef.current + IDLE_THRESHOLD_SEC * 1000
         idlePromptRef.current = true
         setIdlePrompt(true)
         setPendingIdleSec(Math.floor((now - idlePromptStartRef.current) / 1000))
+      } else if (activeStartRef.current === null && !idlePromptRef.current) {
+        // Was briefly away or active elsewhere — resume the active stretch.
+        activeStartRef.current = now
       }
 
-      lastActivityRef.current = now
       setActiveSec(calcActiveSec())
     }
 
-    window.addEventListener('blur', onBlur)
-    window.addEventListener('focus', onFocus)
-    return () => {
-      window.removeEventListener('blur', onBlur)
-      window.removeEventListener('focus', onFocus)
+    function onVisibilityChange() {
+      if (document.hidden) onHide()
+      else onShow()
     }
-  }, [running])
+
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    window.addEventListener('blur', onHide)
+    window.addEventListener('focus', onShow)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+      window.removeEventListener('blur', onHide)
+      window.removeEventListener('focus', onShow)
+    }
+  }, []) // mount-only — all state is accessed via refs
 
   // ── Ticker ───────────────────────────────────────────────────────────────
-  // Fires ~every second but may be throttled in background to once per minute.
-  // All time values derive from Date.now() so accuracy is preserved regardless.
+  // Fires ~every second. All time values derive from Date.now() so accuracy
+  // is preserved even if the interval is throttled in background tabs.
 
   useEffect(() => {
     if (!running) return
     const id = setInterval(() => {
       const now = Date.now()
 
-      // While hidden: active time is frozen (committed on hide).
-      // The visibilitychange handler handles the return — skip all tick logic.
+      // While hidden: active time is frozen. Visibility handlers handle the return.
       if (appHiddenRef.current) return
 
       if (idlePromptRef.current) {
-        // Idle prompt is showing — just refresh the display counter.
         setPendingIdleSec(calcPendingIdleSec())
         return
       }
@@ -228,7 +253,6 @@ export function TimerProvider({ children }: { children: ReactNode }) {
       const sinceActivity = now - lastActivityRef.current
 
       if (sinceActivity >= IDLE_THRESHOLD_SEC * 1000) {
-        // Crossed the idle threshold — commit active time up to last activity.
         commitActiveAt(lastActivityRef.current)
         if (!idlePromptStartRef.current) {
           idlePromptStartRef.current = lastActivityRef.current + IDLE_THRESHOLD_SEC * 1000
@@ -238,7 +262,6 @@ export function TimerProvider({ children }: { children: ReactNode }) {
         idlePromptRef.current = true
         setIdlePrompt(true)
       } else {
-        // Actively working.
         if (activeStartRef.current === null) {
           activeStartRef.current = now
         }
@@ -252,16 +275,36 @@ export function TimerProvider({ children }: { children: ReactNode }) {
 
   async function start(next?: Task | null) {
     if (sessionIdRef.current) await stop()
-    const { data } = await supabase
-      .from('work_sessions')
-      .insert({ task_id: next?.id ?? null, user_id: user?.id })
-      .select('id')
-      .single()
-    sessionIdRef.current = data?.id ?? null
+
+    setStartError(null)
+
+    // Mark as running synchronously BEFORE the network call so the always-on
+    // visibility listeners handle any tab/app switches during the insert.
+    runningRef.current = true
+    appHiddenRef.current = document.hidden
+
+    let sessionId: string | null = null
+    try {
+      const { data, error } = await supabase
+        .from('work_sessions')
+        .insert({ task_id: next?.id ?? null, user_id: user?.id })
+        .select('id')
+        .single()
+      if (error) throw error
+      sessionId = data.id
+    } catch (err) {
+      console.error('Failed to start timer session:', err)
+      runningRef.current = false
+      appHiddenRef.current = false
+      setStartError('Could not start — check your connection and try again.')
+      return
+    }
+
+    sessionIdRef.current = sessionId
     setTask(next ?? null)
 
-    // Reset all accumulators.
     activeAccumRef.current      = 0
+    // Always start the active stretch immediately — time runs whether hidden or not.
     activeStartRef.current      = Date.now()
     idlePromptStartRef.current  = null
     explainedAccumRef.current   = 0
@@ -288,6 +331,8 @@ export function TimerProvider({ children }: { children: ReactNode }) {
   }
 
   async function stop() {
+    // Mark stopped synchronously so visibility listeners ignore future events.
+    runningRef.current = false
     const wasIdle = idlePromptRef.current
     setRunning(false)
     setIdlePrompt(false)
@@ -348,6 +393,7 @@ export function TimerProvider({ children }: { children: ReactNode }) {
         unexplainedSec,
         pendingIdleSec,
         idlePrompt,
+        startError,
         start,
         stop,
         explainIdle,

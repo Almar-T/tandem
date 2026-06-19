@@ -39,7 +39,7 @@ function flushCounts() {
   clicks = 0
 }
 
-setInterval(flushCounts, 30_000)
+setInterval(flushCounts, 10_000)
 window.addEventListener('beforeunload', flushCounts)
 document.addEventListener('visibilitychange', () => { if (document.hidden) flushCounts() })
 
@@ -107,6 +107,20 @@ function showDistractionOverlay() {
   `
 
   document.body.appendChild(overlay)
+
+  // Dismiss overlay automatically if timer stops while on the page
+  const recheckTimer = setInterval(() => {
+    if (!document.getElementById('tandem-overlay')) { clearInterval(recheckTimer); return }
+    try {
+      chrome.runtime.sendMessage({ type: 'content:checkTimer' }, (res) => {
+        if (!res?.running) {
+          const el = document.getElementById('tandem-overlay')
+          if (el) el.remove()
+          clearInterval(recheckTimer)
+        }
+      })
+    } catch { clearInterval(recheckTimer) }
+  }, 15_000)
 
   const textarea = document.getElementById('tandem-reason')
   const submitBtn = document.getElementById('tandem-submit')
