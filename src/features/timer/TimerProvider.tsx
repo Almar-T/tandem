@@ -354,6 +354,7 @@ export function TimerProvider({ children }: { children: ReactNode }) {
         })
         .eq('id', id)
       qc.invalidateQueries({ queryKey: ['tasks'] })
+      qc.invalidateQueries({ queryKey: ['work_sessions'] })
     }
     setTask(null)
   }
