@@ -1,4 +1,4 @@
-import { useRef, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { LayoutDashboard, ListTodo, Target, BarChart2, Menu, X, LogOut, Pencil } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
@@ -75,6 +75,13 @@ export function AppShell() {
   useDailyCheckin()
 
   const isDashboard = pathname === '/'
+
+  // Treat every route change as user activity so the idle timer resets
+  // when navigating between screens (the old screen's idle state shouldn't
+  // carry over to the new one).
+  useEffect(() => {
+    if (timer.running) timer.recordActivity()
+  }, [pathname])
 
   return (
     <div className="flex h-full flex-col">

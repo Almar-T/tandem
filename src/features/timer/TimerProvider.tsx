@@ -26,6 +26,7 @@ interface TimerCtx {
   stop: () => void
   explainIdle: (reason: IdleReason) => void
   dismissIdle: () => void
+  recordActivity: () => void
 }
 
 const Ctx = createContext<TimerCtx | undefined>(undefined)
@@ -85,24 +86,26 @@ export function TimerProvider({ children }: { children: ReactNode }) {
   }
 
   // ── Input activity listener ──────────────────────────────────────────────
+  // Also exposed as `recordActivity` so route changes can signal activity.
+
+  function recordActivity() {
+    lastActivityRef.current = Date.now()
+    if (idlePromptRef.current) {
+      const pending = calcPendingIdleSec()
+      unexplainedAccumRef.current += pending
+      setUnexplainedSec(unexplainedAccumRef.current)
+      idlePromptStartRef.current = null
+      idlePromptRef.current = false
+      setIdlePrompt(false)
+      setPendingIdleSec(0)
+      activeStartRef.current = Date.now()
+    }
+  }
 
   useEffect(() => {
-    function onActivity() {
-      lastActivityRef.current = Date.now()
-      if (idlePromptRef.current) {
-        const pending = calcPendingIdleSec()
-        unexplainedAccumRef.current += pending
-        setUnexplainedSec(unexplainedAccumRef.current)
-        idlePromptStartRef.current = null
-        idlePromptRef.current = false
-        setIdlePrompt(false)
-        setPendingIdleSec(0)
-        activeStartRef.current = Date.now()
-      }
-    }
     const events = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart']
-    events.forEach((e) => window.addEventListener(e, onActivity, { passive: true }))
-    return () => events.forEach((e) => window.removeEventListener(e, onActivity))
+    events.forEach((e) => window.addEventListener(e, recordActivity, { passive: true }))
+    return () => events.forEach((e) => window.removeEventListener(e, recordActivity))
   }, [])
 
   // ── Shared activity signal handler ──────────────────────────────────────
@@ -199,22 +202,13 @@ export function TimerProvider({ children }: { children: ReactNode }) {
       // Skip if timer not running or not currently hidden (dedup focus + visibilitychange).
       if (!runningRef.current || !appHiddenRef.current) return
       appHiddenRef.current = false
-      const now = Date.now()
-      const sinceActivity = now - lastActivityRef.current
-
-      if (sinceActivity >= IDLE_THRESHOLD_SEC * 1000 && !idlePromptRef.current) {
-        // No confirmed activity from the app OR extension during the absence.
-        // Commit active time up to the last known activity and show the idle prompt.
-        commitActiveAt(lastActivityRef.current)
-        idlePromptStartRef.current = lastActivityRef.current + IDLE_THRESHOLD_SEC * 1000
-        idlePromptRef.current = true
-        setIdlePrompt(true)
-        setPendingIdleSec(Math.floor((now - idlePromptStartRef.current) / 1000))
-      } else if (activeStartRef.current === null && !idlePromptRef.current) {
-        // Was briefly away or active elsewhere — resume the active stretch.
-        activeStartRef.current = now
+      // Give a fresh idle grace period on return — time away (other tabs/apps)
+      // is always counted as active, so don't trigger idle detection immediately.
+      lastActivityRef.current = Date.now()
+      // Resume active stretch if idle detection had frozen it.
+      if (activeStartRef.current === null && !idlePromptRef.current) {
+        activeStartRef.current = Date.now()
       }
-
       setActiveSec(calcActiveSec())
     }
 
@@ -242,8 +236,16 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     const id = setInterval(() => {
       const now = Date.now()
 
-      // Only freeze the display when the tab is actually hidden (not just unfocused).
+      // Tab is in the background — don't update display or detect idle.
       if (document.hidden) return
+
+      // Window is visible but not focused (user working in another app on the same
+      // screen). Keep the display live but don't start idle detection — they're
+      // probably still active elsewhere.
+      if (appHiddenRef.current) {
+        setActiveSec(calcActiveSec())
+        return
+      }
 
       if (idlePromptRef.current) {
         setPendingIdleSec(calcPendingIdleSec())
@@ -399,6 +401,7 @@ export function TimerProvider({ children }: { children: ReactNode }) {
         stop,
         explainIdle,
         dismissIdle,
+        recordActivity,
       }}
     >
       {children}
