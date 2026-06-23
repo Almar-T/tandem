@@ -202,13 +202,8 @@ export function TimerProvider({ children }: { children: ReactNode }) {
       // Skip if timer not running or not currently hidden (dedup focus + visibilitychange).
       if (!runningRef.current || !appHiddenRef.current) return
       appHiddenRef.current = false
-      // Give a fresh idle grace period on return — time away (other tabs/apps)
-      // is always counted as active, so don't trigger idle detection immediately.
-      lastActivityRef.current = Date.now()
-      // Resume active stretch if idle detection had frozen it.
-      if (activeStartRef.current === null && !idlePromptRef.current) {
-        activeStartRef.current = Date.now()
-      }
+      // Don't reset lastActivityRef here — idle detection runs continuously
+      // so the idle prompt will already be showing if they were away long enough.
       setActiveSec(calcActiveSec())
     }
 
@@ -228,24 +223,15 @@ export function TimerProvider({ children }: { children: ReactNode }) {
   }, []) // mount-only — all state is accessed via refs
 
   // ── Ticker ───────────────────────────────────────────────────────────────
-  // Fires ~every second. All time values derive from Date.now() so accuracy
-  // is preserved even if the interval is throttled in background tabs.
+  // Fires ~every second. Idle detection runs regardless of tab/window focus —
+  // if the user walks away from any screen the idle prompt will fire after
+  // IDLE_THRESHOLD_SEC. Date.now()-based math stays accurate even when
+  // background tabs throttle the interval.
 
   useEffect(() => {
     if (!running) return
     const id = setInterval(() => {
       const now = Date.now()
-
-      // Tab is in the background — don't update display or detect idle.
-      if (document.hidden) return
-
-      // Window is visible but not focused (user working in another app on the same
-      // screen). Keep the display live but don't start idle detection — they're
-      // probably still active elsewhere.
-      if (appHiddenRef.current) {
-        setActiveSec(calcActiveSec())
-        return
-      }
 
       if (idlePromptRef.current) {
         setPendingIdleSec(calcPendingIdleSec())
