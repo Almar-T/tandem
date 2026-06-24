@@ -3,6 +3,7 @@ import { Send, X, Flame } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useAssistant } from './useAssistant'
 import { OPEN_PLANNER_EVENT } from './openPlanner'
+import { MarkdownMessage } from './MarkdownMessage'
 
 const SUGGESTIONS = [
   "What should I focus on today?",
@@ -78,7 +79,10 @@ export function Assistant() {
                   : 'border border-hearth-border bg-white text-hearth-green',
               )}
             >
-              <div className="whitespace-pre-wrap">{m.content}</div>
+              {m.role === 'assistant'
+                ? <MarkdownMessage content={m.content} />
+                : <div className="whitespace-pre-wrap">{m.content}</div>
+              }
               {m.actions && m.actions.length > 0 && (
                 <div className="mt-2 space-y-1 border-t border-hearth-gold/20 pt-2 text-xs text-hearth-text/70">
                   {m.actions.map((a, j) => (
