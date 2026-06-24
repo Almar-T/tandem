@@ -58,10 +58,10 @@ Deno.serve(async (req) => {
     const partner = profiles.find((p) => p.id !== me.id)
     const names = profiles.map((p) => p.display_name)
 
-    // Compact context: open tasks so the AI can reference/update them by id.
+    // Compact context: open tasks + templates so the AI can reference/update them by id.
     const { data: openTasks = [] } = await supabase
       .from('tasks')
-      .select('id, title, status, due_date, priority, assignee_id, estimate_min, work_type, scheduled_start')
+      .select('id, title, status, due_date, priority, assignee_id, estimate_min, work_type, scheduled_start, is_template, recurrence, recurrence_days')
       .neq('status', 'completed')
       .order('due_date', { ascending: true, nullsFirst: false })
       .limit(50)
@@ -71,6 +71,11 @@ Deno.serve(async (req) => {
         const who = profiles.find((p) => p.id === t.assignee_id)?.display_name ?? 'unassigned'
         const est = t.estimate_min ? `${t.estimate_min}m` : '?'
         const sched = t.scheduled_start ? `sched ${t.scheduled_start}` : 'unscheduled'
+        if (t.is_template) {
+          const days = Array.isArray(t.recurrence_days) && t.recurrence_days.length
+            ? ` days=[${t.recurrence_days.join(',')}]` : ''
+          return `- id=${t.id} | "${t.title}" | RECURRING_TEMPLATE | recurrence=${t.recurrence}${days} | ${t.work_type ?? 'task'} | est ${est} | ${who}`
+        }
         return `- id=${t.id} | "${t.title}" | ${t.status} | ${t.work_type ?? 'task'} | est ${est} | due ${t.due_date ?? 'none'} | ${t.priority} | ${who} | ${sched}`
       })
       .join('\n')
@@ -138,6 +143,14 @@ Deno.serve(async (req) => {
             '- THEN summarise your understanding back to them, and only after that propose the goal + milestones + a concrete task breakdown for their approval.',
             '- Call create_goal (and create_task with the returned goal_id for each task) ONLY after they approve your proposed plan. Never create the goal or tasks during the interview phase.',
             '- Progress tracks automatically from completed linked tasks, so make tasks concrete and completable. You can also link a task to an existing goal by goal_id from the list below.',
+            '',
+            '## Recurring tasks',
+            '- A recurring task is a **template** that auto-spawns a fresh instance each day/week/month at 7 AM.',
+            '- Create one using create_task with recurrence="daily", "weekly", or "monthly". For weekly add recurrence_days as ISO day integers (1=Mon…7=Sun). For monthly add recurrence_days=[day_of_month]. Leave empty for daily.',
+            '- Templates appear in the task list as RECURRING_TEMPLATE — they are the schedule rule, not the actual work item.',
+            '- To completely remove a recurring task (stop it forever), use delete_task on the template id.',
+            '- To stop the recurrence but keep it as a regular task, use stop_recurrence on the template id.',
+            '- Like regular tasks, propose the recurrence schedule before creating and get a thumbs-up. Example: "Here\'s what I\'ve got — Workout · repeats every Mon, Wed, Fri · estimate ~45 min · assigned to you. Want me to set this up?"',
             '',
             '## Day planning',
             '- When asked to plan a day ("plan my day"), first ask which day, what hours they are available, and any fixed commitments — unless they already told you.',
@@ -227,7 +240,7 @@ function buildTools(names: string[]) {
   return [
     {
       name: 'create_task',
-      description: 'Create a new task in the shared list.',
+      description: 'Create a new task in the shared list. Include recurrence to make it a recurring template.',
       parameters: {
         type: 'OBJECT',
         properties: {
@@ -236,11 +249,13 @@ function buildTools(names: string[]) {
           category: { type: 'STRING', description: 'e.g. Marketing, Admin, Personal' },
           work_type: { type: 'STRING', enum: WORK_TYPES },
           priority: { type: 'STRING', enum: PRIORITIES },
-          due_date: { type: 'STRING', description: 'ISO 8601 timestamp' },
+          due_date: { type: 'STRING', description: 'ISO 8601 timestamp. Omit for recurring tasks.' },
           estimate_min: { type: 'INTEGER', description: 'Estimated minutes to complete' },
           assignee,
           show_on_calendar: { type: 'BOOLEAN' },
           goal_id: { type: 'STRING', description: 'Link to a goal id (from create_goal or the goals list)' },
+          recurrence: { type: 'STRING', enum: ['daily', 'weekly', 'monthly'], description: 'Set to make this a recurring template.' },
+          recurrence_days: { type: 'ARRAY', items: { type: 'INTEGER' }, description: 'For weekly: ISO day-of-week 1–7 (1=Mon). For monthly: [day_of_month]. Omit for daily.' },
         },
         required: ['title'],
       },
@@ -306,6 +321,24 @@ function buildTools(names: string[]) {
       },
     },
     {
+      name: 'delete_task',
+      description: 'Permanently delete a task or recurring template by id. Deleting a template stops future spawning; already-spawned instances are kept.',
+      parameters: {
+        type: 'OBJECT',
+        properties: { task_id: { type: 'STRING' } },
+        required: ['task_id'],
+      },
+    },
+    {
+      name: 'stop_recurrence',
+      description: 'Turn a recurring template into a regular one-time task. Future instances will not spawn.',
+      parameters: {
+        type: 'OBJECT',
+        properties: { task_id: { type: 'STRING' } },
+        required: ['task_id'],
+      },
+    },
+    {
       name: 'set_day_plan',
       description: 'Save the Plan for the Day calendar. ONLY call when the user explicitly asks to save/push/set the plan (e.g. "save this plan", "put this in the calendar", "set our plan for the day"). Do NOT call just because you discussed a schedule.',
       parameters: {
@@ -350,22 +383,27 @@ async function execTool(
 
   try {
     if (name === 'create_task') {
+      const isRecurring = !!args.recurrence
       const row = {
         title: args.title,
         description: args.description ?? null,
         category: args.category ?? null,
         work_type: args.work_type ?? null,
         priority: args.priority ?? 'medium',
-        due_date: args.due_date ?? null,
+        due_date: isRecurring ? null : (args.due_date ?? null),
         estimate_min: args.estimate_min ?? null,
         show_on_calendar: args.show_on_calendar ?? false,
         assignee_id: resolveAssignee(args.assignee),
         goal_id: args.goal_id ?? null,
         created_by: myId,
+        recurrence: args.recurrence ?? null,
+        recurrence_days: Array.isArray(args.recurrence_days) ? args.recurrence_days : [],
+        is_template: isRecurring,
       }
       const { error } = await supabase.from('tasks').insert(row)
       if (error) throw error
-      return { ok: true, detail: `Created task "${args.title}"` }
+      if (isRecurring) await supabase.rpc('spawn_recurring_tasks')
+      return { ok: true, detail: `Created ${isRecurring ? 'recurring ' : ''}task "${args.title}"` }
     }
 
     if (name === 'create_goal') {
@@ -419,6 +457,21 @@ async function execTool(
         .eq('id', args.task_id)
       if (error) throw error
       return { ok: true, detail: 'Scheduled a task' }
+    }
+
+    if (name === 'delete_task') {
+      const { error } = await supabase.from('tasks').delete().eq('id', args.task_id)
+      if (error) throw error
+      return { ok: true, detail: 'Deleted task' }
+    }
+
+    if (name === 'stop_recurrence') {
+      const { error } = await supabase
+        .from('tasks')
+        .update({ recurrence: null, recurrence_days: [], is_template: false })
+        .eq('id', args.task_id)
+      if (error) throw error
+      return { ok: true, detail: 'Stopped recurrence — task is now a regular one-time item' }
     }
 
     if (name === 'set_day_plan') {
