@@ -21,6 +21,8 @@ import { ManualHoursModal } from '@/features/timer/ManualHoursModal'
 import { useTimer } from '@/features/timer/TimerProvider'
 import { supabase } from '@/lib/supabase'
 import { EnableNotifications } from '@/features/notifications/EnableNotifications'
+import { DayCalendar } from '@/features/dashboard/DayCalendar'
+import { MarkdownMessage } from '@/features/assistant/MarkdownMessage'
 import type { WorkSession } from '@/lib/types'
 
 // ── helpers ──────────────────────────────────────────────────────────────────
@@ -321,7 +323,10 @@ function HeatherPanel({
                   ? 'bg-hearth-green text-hearth-cream'
                   : 'border border-hearth-border/50 bg-white/80 text-hearth-green shadow-sm',
               )}>
-                <div className="whitespace-pre-wrap">{m.content}</div>
+                {m.role === 'assistant'
+                ? <MarkdownMessage content={m.content} />
+                : <div className="whitespace-pre-wrap">{m.content}</div>
+              }
                 {m.actions && m.actions.length > 0 && (
                   <div className="mt-2 space-y-1 border-t border-hearth-gold/20 pt-2 text-xs text-hearth-text/60">
                     {m.actions.map((a, j) => (
@@ -549,6 +554,9 @@ export function Dashboard() {
   const [logOpen, setLogOpen] = useState(false)
   const [endDayConfirm, setEndDayConfirm] = useState(false)
 
+  const { data: tasks = [] } = useTasks()
+  const { data: profiles = [] } = useProfiles()
+
   const name = user?.user_metadata?.display_name ?? user?.email?.split('@')[0] ?? 'there'
 
   function confirmEndDay() {
@@ -578,6 +586,9 @@ export function Dashboard() {
         onOpenTask={() => ed.openNew()}
         onOpenGoal={() => setGoalEditorOpen(true)}
       />
+
+      {/* Plan for the Day — two-column day calendar */}
+      <DayCalendar tasks={tasks} profiles={profiles} />
 
       {/* Inline per-user analytics */}
       <DashboardAnalytics />

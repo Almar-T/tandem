@@ -8,6 +8,7 @@ import { TaskRow } from './TaskRow'
 import { TaskEditor } from './TaskEditor'
 import { FilterBar, EMPTY_FILTERS, type Filters } from './FilterBar'
 import { effectiveStatus } from './util'
+import { DayCalendar } from '@/features/dashboard/DayCalendar'
 
 export function TasksPage() {
   const { data: tasks = [], isLoading, isError } = useTasks()
@@ -45,6 +46,9 @@ export function TasksPage() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-4">
+      {/* Plan for the Day — two-column day calendar */}
+      <DayCalendar tasks={tasks} profiles={profiles} />
+
       <div className="flex items-center justify-between">
         <div>
           <h1 className="font-serif text-2xl font-semibold text-hearth-green">Tasks</h1>
