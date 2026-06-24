@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import { Repeat } from 'lucide-react'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { useAuth } from '@/auth/AuthProvider'
@@ -8,6 +9,8 @@ import type { Priority, Task, TaskStatus, WorkType } from '@/lib/types'
 import { EDITABLE_STATUSES, PRIORITIES, WORK_TYPES } from './constants'
 import { fromDatetimeLocal, toDatetimeLocal } from './util'
 import { useCreateTask, useUpdateTask } from './useTasks'
+import { supabase } from '@/lib/supabase'
+import { cn } from '@/lib/cn'
 
 const input =
   'w-full rounded-lg border border-hearth-border bg-hearth-cream px-3 py-2 text-sm text-hearth-green outline-none focus:border-hearth-gold focus:ring-1 focus:ring-hearth-gold/30'
@@ -40,6 +43,8 @@ export function TaskEditor({ open, onClose, task, defaultDue = null }: Props) {
   const [assignee, setAssignee] = useState('')
   const [estimate, setEstimate] = useState('')
   const [goalId, setGoalId] = useState('')
+  const [recurrence, setRecurrence] = useState<'daily' | 'weekly' | 'monthly' | null>(null)
+  const [recurrenceDays, setRecurrenceDays] = useState<number[]>([])
 
   // Re-seed the form whenever the dialog opens (new task vs. a specific task).
   useEffect(() => {
@@ -51,12 +56,33 @@ export function TaskEditor({ open, onClose, task, defaultDue = null }: Props) {
     setPriority(task?.priority ?? 'medium')
     setStatus(task?.status ?? 'not_started')
     setDue(toDatetimeLocal(task?.due_date ?? defaultDue ?? null))
-    // New tasks created by clicking a calendar day default to showing on the calendar.
     setShowOnCalendar(task?.show_on_calendar ?? (!task && defaultDue != null))
     setAssignee(task?.assignee_id ?? user?.id ?? '')
     setEstimate(task?.estimate_min ? String(task.estimate_min) : '')
     setGoalId(task?.goal_id ?? '')
+    setRecurrence(task?.recurrence ?? null)
+    setRecurrenceDays(task?.recurrence_days ?? [])
   }, [open, task, defaultDue, user?.id])
+
+  function handleRecurrenceToggle() {
+    if (recurrence) {
+      setRecurrence(null)
+      setRecurrenceDays([])
+    } else {
+      setRecurrence('weekly')
+      setRecurrenceDays([])
+    }
+  }
+
+  function handleRecurrenceType(r: 'daily' | 'weekly' | 'monthly') {
+    setRecurrence(r)
+    if (r === 'monthly') setRecurrenceDays([new Date().getDate()])
+    else if (r === 'daily') setRecurrenceDays([])
+  }
+
+  function toggleDay(dow: number) {
+    setRecurrenceDays((d) => d.includes(dow) ? d.filter((x) => x !== dow) : [...d, dow])
+  }
 
   const busy = create.isPending || update.isPending
 
@@ -64,6 +90,7 @@ export function TaskEditor({ open, onClose, task, defaultDue = null }: Props) {
     e.preventDefault()
     if (!title.trim()) return
 
+    const isRecurring = recurrence !== null
     const fields = {
       title: title.trim(),
       description: description.trim() || null,
@@ -71,17 +98,30 @@ export function TaskEditor({ open, onClose, task, defaultDue = null }: Props) {
       work_type: workType || null,
       priority,
       status,
-      due_date: fromDatetimeLocal(due),
+      due_date: isRecurring ? null : fromDatetimeLocal(due),
       show_on_calendar: showOnCalendar,
       assignee_id: assignee || null,
       estimate_min: estimate ? Number(estimate) : null,
       goal_id: goalId || null,
+      recurrence: recurrence ?? null,
+      recurrence_days: recurrenceDays,
+      is_template: isRecurring,
     }
 
     if (task) {
-      update.mutate({ id: task.id, patch: fields }, { onSuccess: onClose })
+      update.mutate({ id: task.id, patch: fields }, {
+        onSuccess: async () => {
+          if (isRecurring) await supabase.rpc('spawn_recurring_tasks')
+          onClose()
+        },
+      })
     } else {
-      create.mutate({ ...fields, created_by: user?.id ?? null }, { onSuccess: onClose })
+      create.mutate({ ...fields, created_by: user?.id ?? null }, {
+        onSuccess: async () => {
+          if (isRecurring) await supabase.rpc('spawn_recurring_tasks')
+          onClose()
+        },
+      })
     }
   }
 
@@ -233,6 +273,91 @@ export function TaskEditor({ open, onClose, task, defaultDue = null }: Props) {
                 ))}
             </select>
           </label>
+        </div>
+
+        {/* ── Repeat ── */}
+        <div className="rounded-lg border border-hearth-border bg-hearth-muted p-3 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm font-medium text-hearth-green">
+              <Repeat size={14} className="text-hearth-text/50" />
+              Repeat this task
+            </div>
+            <button
+              type="button"
+              onClick={handleRecurrenceToggle}
+              className={cn(
+                'relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors',
+                recurrence ? 'bg-hearth-green' : 'bg-hearth-border',
+              )}
+            >
+              <span className={cn(
+                'inline-block h-4 w-4 rounded-full bg-white shadow transition-transform',
+                recurrence ? 'translate-x-[18px]' : 'translate-x-0.5',
+              )} />
+            </button>
+          </div>
+
+          {recurrence && (
+            <div className="space-y-3">
+              {/* Frequency selector */}
+              <div className="flex gap-2">
+                {(['daily', 'weekly', 'monthly'] as const).map((r) => (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => handleRecurrenceType(r)}
+                    className={cn(
+                      'flex-1 rounded-lg py-1.5 text-xs font-medium capitalize transition',
+                      recurrence === r
+                        ? 'bg-hearth-green text-hearth-cream shadow-sm'
+                        : 'border border-hearth-border bg-white/70 text-hearth-text hover:border-hearth-gold',
+                    )}
+                  >
+                    {r}
+                  </button>
+                ))}
+              </div>
+
+              {/* Day picker for weekly */}
+              {recurrence === 'weekly' && (
+                <div className="flex gap-1">
+                  {[
+                    { dow: 1, label: 'Mo' },
+                    { dow: 2, label: 'Tu' },
+                    { dow: 3, label: 'We' },
+                    { dow: 4, label: 'Th' },
+                    { dow: 5, label: 'Fr' },
+                    { dow: 6, label: 'Sa' },
+                    { dow: 7, label: 'Su' },
+                  ].map(({ dow, label }) => (
+                    <button
+                      key={dow}
+                      type="button"
+                      onClick={() => toggleDay(dow)}
+                      className={cn(
+                        'flex-1 rounded-md py-1 text-xs font-medium transition',
+                        recurrenceDays.includes(dow)
+                          ? 'bg-hearth-green text-hearth-cream'
+                          : 'border border-hearth-border bg-white/70 text-hearth-text hover:border-hearth-gold',
+                      )}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {recurrence === 'monthly' && (
+                <p className="text-xs text-hearth-text/60">
+                  Repeats on day {recurrenceDays[0] ?? new Date().getDate()} of each month.
+                </p>
+              )}
+
+              {recurrence === 'daily' && (
+                <p className="text-xs text-hearth-text/60">A new instance will appear every morning.</p>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="flex justify-end gap-2 pt-2">

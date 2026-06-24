@@ -56,6 +56,10 @@ export interface Task {
   scheduled_start: string | null
   scheduled_end: string | null
   depends_on: string[] | null
+  recurrence: 'daily' | 'weekly' | 'monthly' | null
+  recurrence_days: number[]
+  is_template: boolean
+  template_id: string | null
   created_by: string | null
   completed_at: string | null
   created_at: string

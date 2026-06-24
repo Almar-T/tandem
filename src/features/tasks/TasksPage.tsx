@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Plus } from 'lucide-react'
+import { Plus, Repeat } from 'lucide-react'
 import type { Task } from '@/lib/types'
 import { Button } from '@/components/ui/Button'
 import { useProfiles } from '@/features/profiles/useProfiles'
@@ -18,14 +18,17 @@ export function TasksPage() {
   const [editorOpen, setEditorOpen] = useState(false)
   const [editing, setEditing] = useState<Task | null>(null)
 
+  const templates = useMemo(() => tasks.filter((t) => t.is_template), [tasks])
+  const regularTasks = useMemo(() => tasks.filter((t) => !t.is_template), [tasks])
+
   const categories = useMemo(
-    () => [...new Set(tasks.map((t) => t.category).filter(Boolean) as string[])].sort(),
-    [tasks],
+    () => [...new Set(regularTasks.map((t) => t.category).filter(Boolean) as string[])].sort(),
+    [regularTasks],
   )
 
   const visible = useMemo(() => {
     const q = filters.search.toLowerCase()
-    return tasks.filter((t) => {
+    return regularTasks.filter((t) => {
       if (filters.assignee && t.assignee_id !== filters.assignee) return false
       if (filters.category && t.category !== filters.category) return false
       if (filters.priority && t.priority !== filters.priority) return false
@@ -33,7 +36,7 @@ export function TasksPage() {
       if (q && !t.title.toLowerCase().includes(q)) return false
       return true
     })
-  }, [tasks, filters])
+  }, [regularTasks, filters])
 
   function openNew() {
     setEditing(null)
@@ -49,12 +52,30 @@ export function TasksPage() {
       {/* Plan for the Day — two-column day calendar */}
       <DayCalendar profiles={profiles} />
 
+      {/* Recurring templates */}
+      {templates.length > 0 && (
+        <div>
+          <div className="mb-2 flex items-center gap-2">
+            <Repeat size={14} className="text-hearth-gold" />
+            <h2 className="text-xs font-semibold uppercase tracking-widest text-hearth-text/50">
+              Recurring
+            </h2>
+          </div>
+          <div className="rounded-2xl border border-hearth-border bg-white/40">
+            {templates.map((task) => (
+              <TaskRow key={task.id} task={task} profiles={profiles} onEdit={openEdit} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Regular tasks */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="font-serif text-2xl font-semibold text-hearth-green">Tasks</h1>
           <p className="text-sm text-hearth-text/60">
-            {visible.length} of {tasks.length} {tasks.length === 1 ? 'task' : 'tasks'} · shared,
-            live-synced
+            {visible.length} of {regularTasks.length}{' '}
+            {regularTasks.length === 1 ? 'task' : 'tasks'} · shared, live-synced
           </p>
         </div>
         <Button onClick={openNew}>
@@ -78,7 +99,9 @@ export function TasksPage() {
         )}
         {!isLoading && !isError && visible.length === 0 && (
           <div className="p-10 text-center text-sm text-hearth-text/50">
-            {tasks.length === 0 ? 'No tasks yet — create your first one.' : 'No tasks match these filters.'}
+            {regularTasks.length === 0
+              ? 'No tasks yet — create your first one.'
+              : 'No tasks match these filters.'}
           </div>
         )}
         {visible.map((task) => (
