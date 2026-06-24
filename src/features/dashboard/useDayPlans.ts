@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { format } from 'date-fns'
+import { format } from '@/lib/dates'
 import { useId } from 'react'
 import { supabase } from '@/lib/supabase'
 

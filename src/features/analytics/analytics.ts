@@ -1,4 +1,4 @@
-import { eachDayOfInterval, isSameDay, startOfDay, subDays } from 'date-fns'
+import { eachDayOfInterval, isSameDay, startOfDay, subDays } from '@/lib/dates'
 import type { WorkSession } from '@/lib/types'
 
 export type Range = 7 | 30 | 0 // 0 = all time

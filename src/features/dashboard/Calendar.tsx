@@ -10,7 +10,7 @@ import {
   startOfMonth,
   startOfWeek,
   subMonths,
-} from 'date-fns'
+} from '@/lib/dates'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import type { Task, TaskStatus } from '@/lib/types'
 import { cn } from '@/lib/cn'

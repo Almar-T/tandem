@@ -1,4 +1,4 @@
-import { isSameDay } from 'date-fns'
+import { isSameDay } from '@/lib/dates'
 import { CalendarClock, Play, Sparkles, Square } from 'lucide-react'
 import type { Task } from '@/lib/types'
 import { cn } from '@/lib/cn'

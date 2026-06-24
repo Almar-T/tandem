@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import {
   format, isSameDay, startOfWeek, endOfWeek, eachDayOfInterval,
   startOfMonth, endOfMonth, addMonths, subMonths, isAfter,
-} from 'date-fns'
+} from '@/lib/dates'
 import { Keyboard, Globe, ChevronLeft, ChevronRight } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import type { Profile, Task, WorkSession } from '@/lib/types'

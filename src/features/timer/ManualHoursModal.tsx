@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { format } from 'date-fns'
+import { format } from '@/lib/dates'
 import { useQueryClient } from '@tanstack/react-query'
 import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'

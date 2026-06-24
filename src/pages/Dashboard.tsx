@@ -1,5 +1,5 @@
 import { useMemo, useState, type FormEvent } from 'react'
-import { format, isSameDay, isAfter, startOfDay, startOfWeek, endOfWeek, eachDayOfInterval } from 'date-fns'
+import { format, isSameDay, isAfter, startOfDay, startOfWeek, endOfWeek, eachDayOfInterval } from '@/lib/dates'
 import {
   Send, Flame, Sun, Moon, Play, Square, PenLine, Check, Plus, Target,
 } from 'lucide-react'

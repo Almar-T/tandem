@@ -1,4 +1,4 @@
-import { format } from 'date-fns'
+import { format } from '@/lib/dates'
 import { CalendarClock, Sparkles, Coffee } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import type { Profile } from '@/lib/types'

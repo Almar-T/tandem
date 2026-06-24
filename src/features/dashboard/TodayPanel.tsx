@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { isToday } from 'date-fns'
+import { isToday } from '@/lib/dates'
 import { AlertTriangle, CalendarClock, CheckCircle2, Sparkles } from 'lucide-react'
 import type { Task } from '@/lib/types'
 import { cn } from '@/lib/cn'
