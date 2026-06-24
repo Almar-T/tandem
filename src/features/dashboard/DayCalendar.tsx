@@ -8,10 +8,6 @@ import { useDayPlans, type DaySlot } from './useDayPlans'
 // ── Layout constants ─────────────────────────────────────────────────────────
 
 const HOUR_HEIGHT = 56
-const START_HOUR  = 8    // 8 AM
-const END_HOUR    = 20   // 8 PM
-const HOURS       = Array.from({ length: END_HOUR - START_HOUR }, (_, i) => START_HOUR + i)
-const TOTAL_H     = (END_HOUR - START_HOUR) * HOUR_HEIGHT
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -21,8 +17,8 @@ function parseMinutes(hhmm: string): number {
   return h * 60 + (m ?? 0)
 }
 
-function minutesToOffset(min: number): number {
-  return ((min - START_HOUR * 60) / 60) * HOUR_HEIGHT
+function minutesToOffset(min: number, startHour: number): number {
+  return ((min - startHour * 60) / 60) * HOUR_HEIGHT
 }
 
 function fmtHour(h: number): string {
@@ -52,13 +48,13 @@ const WT_DEFAULT  = { bg: '#e8e4da', text: '#3d4f3f', border: '#d4cfc4' }
 
 // ── Single slot block ────────────────────────────────────────────────────────
 
-function SlotBlock({ slot }: { slot: DaySlot }) {
+function SlotBlock({ slot, startHour, totalH }: { slot: DaySlot; startHour: number; totalH: number }) {
   const startMin = parseMinutes(slot.start)
   const endMin   = parseMinutes(slot.end)
 
-  const top    = Math.max(0, minutesToOffset(startMin))
-  const rawH   = minutesToOffset(endMin) - minutesToOffset(startMin)
-  const height = Math.max(22, Math.min(rawH, TOTAL_H - top))
+  const top    = Math.max(0, minutesToOffset(startMin, startHour))
+  const rawH   = minutesToOffset(endMin, startHour) - minutesToOffset(startMin, startHour)
+  const height = Math.max(22, Math.min(rawH, totalH - top))
 
   const colors = slot.is_break
     ? BREAK_STYLE
@@ -95,11 +91,11 @@ function SlotBlock({ slot }: { slot: DaySlot }) {
 
 // ── One user's column ────────────────────────────────────────────────────────
 
-function UserCol({ slots }: { profile: Profile; slots: DaySlot[] }) {
+function UserCol({ slots, hours, startHour, totalH }: { profile: Profile; slots: DaySlot[]; hours: number[]; startHour: number; totalH: number }) {
   return (
-    <div className="relative flex-1 border-l border-hearth-border/30" style={{ height: TOTAL_H }}>
+    <div className="relative flex-1 border-l border-hearth-border/30" style={{ height: totalH }}>
       {/* Hour grid lines */}
-      {HOURS.map((_, i) => (
+      {hours.map((_, i) => (
         <div
           key={i}
           style={{ top: i * HOUR_HEIGHT }}
@@ -114,7 +110,7 @@ function UserCol({ slots }: { profile: Profile; slots: DaySlot[] }) {
       )}
 
       {slots.map((s, i) => (
-        <SlotBlock key={i} slot={s} />
+        <SlotBlock key={i} slot={s} startHour={startHour} totalH={totalH} />
       ))}
     </div>
   )
@@ -128,14 +124,24 @@ export function DayCalendar({ profiles }: { profiles: Profile[] }) {
 
   if (profiles.length < 1) return null
 
-  const nowMin  = today.getHours() * 60 + today.getMinutes()
-  const nowY    = minutesToOffset(nowMin)
-  const showNow = nowY >= 0 && nowY <= TOTAL_H
-
   const slotsFor = (profile: Profile): DaySlot[] =>
     plans.find((p) => p.user_id === profile.id)?.slots ?? []
 
   const hasAnyPlan = profiles.some((p) => slotsFor(p).length > 0)
+
+  const allSlots = profiles.flatMap((p) => slotsFor(p))
+  const startHour = allSlots.length > 0
+    ? Math.max(0, Math.floor(Math.min(...allSlots.map((s) => parseMinutes(s.start))) / 60))
+    : 8
+  const endHour = allSlots.length > 0
+    ? Math.min(24, Math.ceil(Math.max(...allSlots.map((s) => parseMinutes(s.end))) / 60))
+    : 20
+  const hours  = Array.from({ length: endHour - startHour }, (_, i) => startHour + i)
+  const totalH = (endHour - startHour) * HOUR_HEIGHT
+
+  const nowMin  = today.getHours() * 60 + today.getMinutes()
+  const nowY    = minutesToOffset(nowMin, startHour)
+  const showNow = nowY >= 0 && nowY <= totalH
 
   return (
     <div className="glass overflow-hidden rounded-2xl shadow-md">
@@ -191,8 +197,8 @@ export function DayCalendar({ profiles }: { profiles: Profile[] }) {
           {/* Time ruler + columns */}
           <div className="flex">
             {/* Hour labels */}
-            <div className="relative w-12 shrink-0" style={{ height: TOTAL_H }}>
-              {HOURS.map((h, i) => (
+            <div className="relative w-12 shrink-0" style={{ height: totalH }}>
+              {hours.map((h, i) => (
                 <div
                   key={h}
                   style={{ top: i * HOUR_HEIGHT - 7 }}
@@ -204,9 +210,9 @@ export function DayCalendar({ profiles }: { profiles: Profile[] }) {
             </div>
 
             {/* User columns + now-line */}
-            <div className="relative flex flex-1" style={{ height: TOTAL_H }}>
+            <div className="relative flex flex-1" style={{ height: totalH }}>
               {profiles.slice(0, 2).map((p) => (
-                <UserCol key={p.id} profile={p} slots={slotsFor(p)} />
+                <UserCol key={p.id} profile={p} slots={slotsFor(p)} hours={hours} startHour={startHour} totalH={totalH} />
               ))}
 
               {showNow && (
