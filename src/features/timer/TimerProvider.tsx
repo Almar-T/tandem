@@ -11,8 +11,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/auth/AuthProvider'
 import type { IdleReason, Task } from '@/lib/types'
 
-const IDLE_THRESHOLD_SEC        = 120  // when HearthHall is visible (2 min)
-const IDLE_HIDDEN_THRESHOLD_SEC = 300  // when HearthHall is backgrounded (5 min)
+const IDLE_THRESHOLD_SEC = 120
 
 interface TimerCtx {
   task: Task | null
@@ -191,19 +190,22 @@ export function TimerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     function onHide() {
       // Skip if timer not running or already hidden (dedup blur + visibilitychange).
+      // Time keeps accumulating while hidden — no freeze, no commit.
       if (!runningRef.current || appHiddenRef.current) return
       appHiddenRef.current = true
-      // Reset the idle clock when switching away so the hidden threshold
-      // starts fresh from this moment, not from the last HearthHall interaction.
-      lastActivityRef.current = Date.now()
     }
 
     function onShow() {
       // Skip if timer not running or not currently hidden (dedup focus + visibilitychange).
       if (!runningRef.current || !appHiddenRef.current) return
       appHiddenRef.current = false
-      // Don't reset lastActivityRef here — idle detection runs continuously
-      // so the idle prompt will already be showing if they were away long enough.
+      // Give a fresh idle grace period on return — time away (other tabs/apps)
+      // is always counted as active, so don't trigger idle immediately on focus.
+      lastActivityRef.current = Date.now()
+      // Resume active stretch if idle detection had frozen it.
+      if (activeStartRef.current === null && !idlePromptRef.current) {
+        activeStartRef.current = Date.now()
+      }
       setActiveSec(calcActiveSec())
     }
 
@@ -233,15 +235,24 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     const id = setInterval(() => {
       const now = Date.now()
 
+      // Tab is in the background — don't update display or detect idle.
+      if (document.hidden) return
+
+      // Window is visible but not focused (user working in another app).
+      // Keep the display live but skip idle detection — they're active elsewhere.
+      if (appHiddenRef.current) {
+        setActiveSec(calcActiveSec())
+        return
+      }
+
       if (idlePromptRef.current) {
         setPendingIdleSec(calcPendingIdleSec())
         return
       }
 
       const sinceActivity = now - lastActivityRef.current
-      const threshold = appHiddenRef.current ? IDLE_HIDDEN_THRESHOLD_SEC : IDLE_THRESHOLD_SEC
 
-      if (sinceActivity >= threshold * 1000) {
+      if (sinceActivity >= IDLE_THRESHOLD_SEC * 1000) {
         commitActiveAt(lastActivityRef.current)
         if (!idlePromptStartRef.current) {
           idlePromptStartRef.current = lastActivityRef.current + IDLE_THRESHOLD_SEC * 1000
