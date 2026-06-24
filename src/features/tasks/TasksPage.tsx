@@ -47,7 +47,7 @@ export function TasksPage() {
   return (
     <div className="mx-auto max-w-4xl space-y-4">
       {/* Plan for the Day — two-column day calendar */}
-      <DayCalendar tasks={tasks} profiles={profiles} />
+      <DayCalendar profiles={profiles} />
 
       <div className="flex items-center justify-between">
         <div>

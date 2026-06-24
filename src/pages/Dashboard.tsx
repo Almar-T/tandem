@@ -554,7 +554,6 @@ export function Dashboard() {
   const [logOpen, setLogOpen] = useState(false)
   const [endDayConfirm, setEndDayConfirm] = useState(false)
 
-  const { data: tasks = [] } = useTasks()
   const { data: profiles = [] } = useProfiles()
 
   const name = user?.user_metadata?.display_name ?? user?.email?.split('@')[0] ?? 'there'
@@ -588,7 +587,7 @@ export function Dashboard() {
       />
 
       {/* Plan for the Day — two-column day calendar */}
-      <DayCalendar tasks={tasks} profiles={profiles} />
+      <DayCalendar profiles={profiles} />
 
       {/* Inline per-user analytics */}
       <DashboardAnalytics />

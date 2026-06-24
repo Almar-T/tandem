@@ -141,10 +141,10 @@ Deno.serve(async (req) => {
             '',
             '## Day planning',
             '- When asked to plan a day ("plan my day"), first ask which day, what hours they are available, and any fixed commitments — unless they already told you.',
-            '- Then build an efficient schedule using evidence-based principles: protect a long uninterrupted block for deep_work in their high-energy window (usually morning); batch similar/admin work to cut context-switching; do urgent and near-deadline and high-priority work first; respect dependencies; insert short breaks (~5–10 min roughly every 90 min) and a longer break after deep work; keep it realistic using each task\'s estimate.',
-            '- Place each task with schedule_task(task_id, start, end) using ISO timestamps within their available hours.',
-            '- After scheduling, explain the plan in plain language: when each task happens, where the breaks go, and WHY you arranged it that way.',
-            '- To replan, re-schedule the affected tasks. If a task is completed, added, or slips and they ask, rebalance the rest of the day around what remains.',
+            '- Then build an efficient schedule: protect a long deep_work block in the morning; batch admin; do urgent/near-deadline work first; insert short breaks (~5–10 min per 90 min) and a longer lunch break. Use each task\'s estimate.',
+            '- Present the plan in plain language first. Do NOT call set_day_plan automatically — wait until the user explicitly says "save this", "put this in the calendar", "set our plan for the day", or similar.',
+            '- When the user confirms, call set_day_plan with the full list of slots including breaks. Use "HH:MM" 24h format for start/end times.',
+            '- To replan, propose the new schedule in text first, then call set_day_plan again only if the user confirms.',
             '',
             '## Daily check-in',
             '- When the user starts a daily check-in, greet them warmly and briefly. Ask if they have any new tasks to add today. Whether or not they do, show today\'s priorities and scheduled plan and flag anything overdue. If they add tasks, help organize them. Keep it short and motivating — a good morning kick-off, not a wall of text.',
@@ -305,6 +305,33 @@ function buildTools(names: string[]) {
         required: ['task_id', 'start', 'end'],
       },
     },
+    {
+      name: 'set_day_plan',
+      description: 'Save the Plan for the Day calendar. ONLY call when the user explicitly asks to save/push/set the plan (e.g. "save this plan", "put this in the calendar", "set our plan for the day"). Do NOT call just because you discussed a schedule.',
+      parameters: {
+        type: 'OBJECT',
+        properties: {
+          date: { type: 'STRING', description: 'ISO date YYYY-MM-DD' },
+          slots: {
+            type: 'ARRAY',
+            description: 'Ordered list of time blocks for the day, including breaks.',
+            items: {
+              type: 'OBJECT',
+              properties: {
+                title:     { type: 'STRING', description: 'Label shown on the block' },
+                start:     { type: 'STRING', description: 'Start time HH:MM in 24h local time, e.g. "09:00"' },
+                end:       { type: 'STRING', description: 'End time HH:MM in 24h local time, e.g. "10:30"' },
+                task_id:   { type: 'STRING', description: 'UUID of the linked task (omit for breaks)' },
+                work_type: { type: 'STRING', description: 'deep_work | admin | meeting | creative | study | collab' },
+                is_break:  { type: 'BOOLEAN', description: 'true for breaks, false for work blocks' },
+              },
+              required: ['title', 'start', 'end', 'is_break'],
+            },
+          },
+        },
+        required: ['date', 'slots'],
+      },
+    },
   ]
 }
 
@@ -392,6 +419,18 @@ async function execTool(
         .eq('id', args.task_id)
       if (error) throw error
       return { ok: true, detail: 'Scheduled a task' }
+    }
+
+    if (name === 'set_day_plan') {
+      const slots = args.slots as unknown[]
+      const { error } = await supabase
+        .from('day_plans')
+        .upsert(
+          { user_id: myId, plan_date: args.date, slots, updated_at: new Date().toISOString() },
+          { onConflict: 'user_id,plan_date' },
+        )
+      if (error) throw error
+      return { ok: true, detail: `Saved day plan with ${slots.length} slots` }
     }
 
     return { ok: false, detail: '', error: `Unknown tool ${name}` }
