@@ -1,56 +1,6 @@
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import mermaid from 'mermaid'
-import { useEffect, useRef, useState } from 'react'
 import type { Components } from 'react-markdown'
-
-mermaid.initialize({
-  startOnLoad: false,
-  theme: 'base',
-  themeVariables: {
-    primaryColor: '#1b2a1e',
-    primaryTextColor: '#f9f7f2',
-    primaryBorderColor: '#c2a76d',
-    lineColor: '#3d4f3f',
-    secondaryColor: '#e8e4da',
-    tertiaryColor: '#f9f7f2',
-    background: '#f9f7f2',
-    mainBkg: '#f9f7f2',
-    nodeBorder: '#d4cfc4',
-    clusterBkg: '#e8e4da',
-    titleColor: '#1b2a1e',
-    edgeLabelBackground: '#f9f7f2',
-    fontFamily: 'Inter, system-ui, sans-serif',
-  },
-})
-
-let mermaidCounter = 0
-
-function MermaidChart({ code }: { code: string }) {
-  const [svg, setSvg] = useState<string | null>(null)
-  const [error, setError] = useState(false)
-  const idRef = useRef(`mermaid-${++mermaidCounter}`)
-
-  useEffect(() => {
-    mermaid
-      .render(idRef.current, code)
-      .then(({ svg: rendered }) => setSvg(rendered))
-      .catch(() => setError(true))
-  }, [code])
-
-  if (error) return (
-    <pre className="overflow-x-auto rounded-lg bg-hearth-muted p-3 text-xs text-hearth-text">
-      {code}
-    </pre>
-  )
-  if (!svg) return <div className="h-8 animate-pulse rounded bg-hearth-muted" />
-  return (
-    <div
-      className="my-2 overflow-x-auto rounded-lg border border-hearth-border bg-hearth-cream p-2"
-      dangerouslySetInnerHTML={{ __html: svg }}
-    />
-  )
-}
 
 const components: Components = {
   h1: ({ children }) => (
@@ -88,13 +38,7 @@ const components: Components = {
     <td className="border border-hearth-border px-2 py-1 text-hearth-text">{children}</td>
   ),
   code: ({ className, children, ...props }) => {
-    const lang = /language-(\w+)/.exec(className ?? '')?.[1]
     const isBlock = 'node' in props
-
-    if (isBlock && lang === 'mermaid') {
-      return <MermaidChart code={String(children).trim()} />
-    }
-
     if (isBlock) {
       return (
         <pre className="my-2 overflow-x-auto rounded-lg bg-hearth-muted p-3 text-xs text-hearth-text">
@@ -102,7 +46,6 @@ const components: Components = {
         </pre>
       )
     }
-
     return (
       <code className="rounded bg-hearth-muted px-1 py-0.5 font-mono text-xs text-hearth-green">
         {children}
