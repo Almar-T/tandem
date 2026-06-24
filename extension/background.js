@@ -151,13 +151,15 @@ let activeTabDomain = ''
 let activeTabStartedAt = Date.now()
 
 async function onTabFocus(tabId) {
+  // Flush accumulated time on the previous tab immediately so HearthHall
+  // receives an activity signal on every tab/window switch rather than
+  // waiting up to 60 s for the alarm.
   if (activeTabDomain && isTrackable(activeTabUrl)) {
     const elapsed = Math.round((Date.now() - activeTabStartedAt) / 1000)
-    if (elapsed > 0) {
-      const auth = await getValidAuth()
-      if (auth && await checkTimerRunning(auth)) {
-        await accumulate(activeTabDomain, 0, 0, elapsed)
-      }
+    const auth = await getValidAuth()
+    if (auth && await checkTimerRunning(auth)) {
+      if (elapsed > 0) await accumulate(activeTabDomain, 0, 0, elapsed)
+      await flushPending()
     }
   }
   activeTabId = tabId
@@ -168,6 +170,16 @@ async function onTabFocus(tabId) {
     activeTabUrl = tab.url || ''
     activeTabDomain = getDomain(activeTabUrl)
   } catch { activeTabUrl = ''; activeTabDomain = '' }
+
+  // Send a 1-second heartbeat for the newly focused tab so returning to
+  // Chrome (even after idle) resets the idle clock immediately.
+  if (activeTabDomain && isTrackable(activeTabUrl)) {
+    const auth = await getValidAuth()
+    if (auth && await checkTimerRunning(auth)) {
+      await accumulate(activeTabDomain, 0, 0, 1)
+      await flushPending()
+    }
+  }
 }
 
 chrome.tabs.onActivated.addListener(({ tabId }) => { void onTabFocus(tabId) })

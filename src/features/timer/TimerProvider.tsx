@@ -149,10 +149,7 @@ export function TimerProvider({ children }: { children: ReactNode }) {
           table: 'browser_activity',
           filter: `user_id=eq.${user.id}`,
         },
-        (payload) => {
-          const row = payload.new as { clicks: number; keystrokes: number }
-          if ((row.clicks ?? 0) + (row.keystrokes ?? 0) > 0) onExternalActivity()
-        },
+        () => { onExternalActivity() },
       )
       .subscribe()
     return () => { supabase.removeChannel(channel) }
