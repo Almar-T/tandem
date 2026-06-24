@@ -11,7 +11,8 @@ import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/auth/AuthProvider'
 import type { IdleReason, Task } from '@/lib/types'
 
-const IDLE_THRESHOLD_SEC = 120
+const IDLE_THRESHOLD_SEC        = 120  // when HearthHall is visible (2 min)
+const IDLE_HIDDEN_THRESHOLD_SEC = 300  // when HearthHall is backgrounded (5 min)
 
 interface TimerCtx {
   task: Task | null
@@ -190,9 +191,11 @@ export function TimerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     function onHide() {
       // Skip if timer not running or already hidden (dedup blur + visibilitychange).
-      // Time keeps accumulating while hidden — no freeze, no commit.
       if (!runningRef.current || appHiddenRef.current) return
       appHiddenRef.current = true
+      // Reset the idle clock when switching away so the hidden threshold
+      // starts fresh from this moment, not from the last HearthHall interaction.
+      lastActivityRef.current = Date.now()
     }
 
     function onShow() {
@@ -236,8 +239,9 @@ export function TimerProvider({ children }: { children: ReactNode }) {
       }
 
       const sinceActivity = now - lastActivityRef.current
+      const threshold = appHiddenRef.current ? IDLE_HIDDEN_THRESHOLD_SEC : IDLE_THRESHOLD_SEC
 
-      if (sinceActivity >= IDLE_THRESHOLD_SEC * 1000) {
+      if (sinceActivity >= threshold * 1000) {
         commitActiveAt(lastActivityRef.current)
         if (!idlePromptStartRef.current) {
           idlePromptStartRef.current = lastActivityRef.current + IDLE_THRESHOLD_SEC * 1000
