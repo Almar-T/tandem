@@ -52,6 +52,9 @@ export function useAssistant() {
       if (data?.actions?.length) {
         qc.invalidateQueries({ queryKey: ['tasks'] })
         qc.invalidateQueries({ queryKey: ['goals'] })
+        if (data.actions.some((a) => a.type === 'set_day_plan')) {
+          qc.invalidateQueries({ queryKey: ['day_plans'] })
+        }
       }
     } catch (e) {
       setMessages([

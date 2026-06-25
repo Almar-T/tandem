@@ -9,6 +9,41 @@ import { Assistant } from '@/features/assistant/Assistant'
 import { TimerBar, timerClock } from '@/features/timer/TimerBar'
 import { useTimer } from '@/features/timer/TimerProvider'
 import { useDailyCheckin } from '@/features/checkin/useDailyCheckin'
+import { useProfiles, initialOf } from '@/features/profiles/useProfiles'
+import { useActiveTimers } from '@/features/presence/useActiveTimers'
+
+function PresenceStrip() {
+  const { data: profiles = [] } = useProfiles()
+  const active = useActiveTimers()
+
+  if (profiles.length === 0) return null
+
+  return (
+    <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none">
+      {profiles.map((p) => {
+        const timing = active.has(p.id)
+        return (
+          <div
+            key={p.id}
+            title={timing ? `${p.display_name} is timing` : p.display_name}
+            className="relative flex shrink-0 items-center gap-1.5 rounded-full border border-hearth-border/50 bg-white/60 px-2 py-1 text-xs text-hearth-green"
+          >
+            <div className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-hearth-green text-[10px] font-semibold text-hearth-cream">
+              {initialOf(p.display_name)}
+            </div>
+            <span className="hidden font-medium sm:inline">{p.display_name}</span>
+            <span
+              className={cn(
+                'h-2 w-2 shrink-0 rounded-full',
+                timing ? 'animate-pulse bg-productive' : 'bg-hearth-border',
+              )}
+            />
+          </div>
+        )
+      })}
+    </div>
+  )
+}
 
 const NAV = [
   { to: '/',          label: 'Home',      icon: LayoutDashboard, end: true },
@@ -96,6 +131,9 @@ export function AppShell() {
           </svg>
           <span className="font-serif text-lg font-semibold tracking-wide text-hearth-green">HearthHall</span>
         </div>
+
+        {/* Who's timing — compact scrollable presence strip */}
+        <PresenceStrip />
 
         <div className="flex items-center gap-2">
           {/* Timer chip — visible when session is running */}
