@@ -140,13 +140,13 @@ export function AppShell() {
           {timer.running && (
             <div className={cn(
               'hidden items-center gap-1.5 rounded-lg border px-2.5 py-1 font-mono text-xs sm:flex',
-              timer.idlePrompt
+              timer.idleNotice
                 ? 'border-explained/40 bg-explained/10 text-explained'
                 : 'border-productive/30 bg-productive/10 text-productive',
             )}>
               <span className={cn(
                 'h-1.5 w-1.5 rounded-full',
-                timer.idlePrompt ? 'animate-pulse bg-explained' : 'bg-productive',
+                timer.idleNotice ? 'animate-pulse bg-explained' : 'bg-productive',
               )} />
               {timerClock(timer.activeSec)}
             </div>

@@ -66,6 +66,14 @@ Deno.serve(async (req) => {
       .order('due_date', { ascending: true, nullsFirst: false })
       .limit(50)
 
+    // Recently completed tasks — so Heather can reference and reopen them if asked.
+    const { data: completedTasks = [] } = await supabase
+      .from('tasks')
+      .select('id, title, due_date, assignee_id')
+      .eq('status', 'completed')
+      .order('due_date', { ascending: false, nullsFirst: false })
+      .limit(20)
+
     const taskLines = openTasks
       .map((t) => {
         const who = profiles.find((p) => p.id === t.assignee_id)?.display_name ?? 'unassigned'
@@ -77,6 +85,13 @@ Deno.serve(async (req) => {
           return `- id=${t.id} | "${t.title}" | RECURRING_TEMPLATE | recurrence=${t.recurrence}${days} | ${t.work_type ?? 'task'} | est ${est} | ${who}`
         }
         return `- id=${t.id} | "${t.title}" | ${t.status} | ${t.work_type ?? 'task'} | est ${est} | due ${t.due_date ?? 'none'} | ${t.priority} | ${who} | ${sched}`
+      })
+      .join('\n')
+
+    const completedLines = completedTasks
+      .map((t) => {
+        const who = profiles.find((p) => p.id === t.assignee_id)?.display_name ?? 'unassigned'
+        return `- id=${t.id} | "${t.title}" | COMPLETED | due ${t.due_date ?? 'none'} | ${who}`
       })
       .join('\n')
 
@@ -104,10 +119,16 @@ Deno.serve(async (req) => {
       parts: [
         {
           text: [
-            'You are the Tandem Planner — an AI productivity planner and project manager for a TWO-person shared workspace.',
+            'You are Heather — an AI productivity planner and project manager for a TWO-person shared workspace.',
             `The current user is "${myProfile?.display_name ?? 'the user'}" (id=${me.id}).`,
             partner ? `Their partner is "${partner.display_name}".` : '',
             `Current date/time (ISO): ${now.toISOString()}. Resolve relative dates ("tomorrow", "Friday") against this.`,
+            '',
+            '## CRITICAL: When NOT to call tools',
+            '- **NEVER call any tool when answering an informational or read-only question.** If the user asks what tasks are overdue, due today, due tomorrow, or asks for any list/count/summary of tasks — answer using the task context below. Do NOT call complete_task, create_task, update_task, schedule_task, or any other tool.',
+            '- **complete_task must ONLY be called when the user explicitly names a specific task and says to mark it done / finished / complete.** A question like "what are my overdue tasks?" or "what is due today?" is NOT a request to complete anything.',
+            '- **create_task must ONLY be called after the user has confirmed the task details.** Reading a list of tasks back to the user is not confirmation to create anything.',
+            '- When in doubt, answer with text. Ask before acting.',
             '',
             '## How you work',
             '- Be a hands-on planner, not a note-taker. Help the user think, plan, and follow through.',
@@ -133,7 +154,8 @@ Deno.serve(async (req) => {
             '- due_date must be a full ISO 8601 timestamp.',
             '- show_on_calendar=true ONLY for time-specific events worth calendaring (meetings, calls, appointments, hard deadlines). Everyday to-dos stay off the calendar.',
             `- assignee must be one of: ${names.join(', ')} (or omit for the current user).`,
-            '- To change or complete an existing task, use its exact id from the list below.',
+            '- To change or complete an existing task, use its exact id from the open or completed task lists below.',
+            '- To **reopen or un-complete** a task, use update_task with status="not_started" or status="in_progress". The recently completed tasks list below shows tasks you can reopen.',
             '- You cannot send push reminders yet (coming soon). If asked to remind, set a due date and say reminders will arrive once notifications are enabled.',
             '',
             '## Goals — INTERVIEW FIRST, PLAN SECOND',
@@ -170,6 +192,9 @@ Deno.serve(async (req) => {
             '',
             'Current open tasks:',
             taskLines || '(none)',
+            '',
+            'Recently completed tasks (can be reopened with update_task status=not_started/in_progress):',
+            completedLines || '(none)',
             '',
             'Time tracked today:',
             timeLines,
@@ -282,7 +307,7 @@ function buildTools(names: string[]) {
     },
     {
       name: 'update_task',
-      description: 'Update fields of an existing task by id.',
+      description: 'Update fields of an existing task by id. Also use this to reopen a completed task by setting status to not_started or in_progress.',
       parameters: {
         type: 'OBJECT',
         properties: {
@@ -431,6 +456,8 @@ async function execTool(
     }
 
     if (name === 'update_task') {
+      const { data: existing } = await supabase.from('tasks').select('title').eq('id', args.task_id).single()
+      const taskTitle = existing?.title ?? 'task'
       const patch: Record<string, unknown> = {}
       for (const k of ['title', 'priority', 'status', 'due_date', 'estimate_min', 'show_on_calendar']) {
         if (args[k] !== undefined) patch[k] = args[k]
@@ -438,16 +465,19 @@ async function execTool(
       if (args.assignee !== undefined) patch.assignee_id = resolveAssignee(args.assignee)
       const { error } = await supabase.from('tasks').update(patch).eq('id', args.task_id)
       if (error) throw error
-      return { ok: true, detail: 'Updated task' }
+      const statusNote = patch.status ? ` (status → ${patch.status})` : ''
+      return { ok: true, detail: `Updated "${taskTitle}"${statusNote}` }
     }
 
     if (name === 'complete_task') {
+      const { data: existing } = await supabase.from('tasks').select('title').eq('id', args.task_id).single()
+      const taskTitle = existing?.title ?? 'task'
       const { error } = await supabase
         .from('tasks')
         .update({ status: 'completed' })
         .eq('id', args.task_id)
       if (error) throw error
-      return { ok: true, detail: 'Marked task complete' }
+      return { ok: true, detail: `Marked "${taskTitle}" complete` }
     }
 
     if (name === 'schedule_task') {

@@ -226,6 +226,12 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
         if (auth && await checkTimerRunning(auth)) {
           await accumulate(domain, msg.keystrokes, msg.clicks, 0)
           await flushPending()
+          // Stamp the last time real input (keystrokes or clicks) was seen.
+          // The periodic alarm uses this to decide whether to send an activity
+          // signal — tab-elapsed-time alone does NOT count as activity.
+          if (msg.keystrokes > 0 || msg.clicks > 0) {
+            await chrome.storage.local.set({ lastRealActivityMs: Date.now() })
+          }
         }
       })
     }
@@ -275,10 +281,17 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
   await chrome.storage.local.remove('timerCache')
   const auth = await getValidAuth()
   const timerActive = auth ? await checkTimerRunning(auth) : false
-  // Only accumulate current-tab time when timer is actually running
+
   if (timerActive && activeTabDomain && isTrackable(activeTabUrl)) {
-    const elapsed = Math.round((Date.now() - activeTabStartedAt) / 1000)
-    if (elapsed > 0) await accumulate(activeTabDomain, 0, 0, elapsed)
+    // Only count tab-elapsed-time as an activity signal if there were actual
+    // keystrokes or clicks in the last 60 s. Tab presence alone (user idle
+    // in Chrome with a tab open) must NOT reset the PWA idle clock.
+    const { lastRealActivityMs } = await chrome.storage.local.get('lastRealActivityMs')
+    const recentInput = lastRealActivityMs && (Date.now() - lastRealActivityMs < 60_000)
+    if (recentInput) {
+      const elapsed = Math.round((Date.now() - activeTabStartedAt) / 1000)
+      if (elapsed > 0) await accumulate(activeTabDomain, 0, 0, elapsed)
+    }
   }
   activeTabStartedAt = Date.now()
   await flushPending()

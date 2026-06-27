@@ -16,7 +16,7 @@ interface AgentResponse {
 const GREETING: ChatMessage = {
   role: 'assistant',
   content:
-    "Hi! I'm your Tandem Planner. Tell me what's on your plate — e.g. \"help me prep for the investor meeting next Friday\" — and I'll break it into tasks, estimate the time, and help you plan when to do it.",
+    "Hi! I'm Heather, your AI planner. Tell me what's on your plate — e.g. \"help me prep for the investor meeting next Friday\" — and I'll break it into tasks, estimate the time, and help you plan when to do it.",
 }
 
 export function useAssistant() {

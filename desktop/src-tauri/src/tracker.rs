@@ -5,6 +5,12 @@ use crate::supabase::{self, Auth};
 
 pub type SharedAuth = Arc<Mutex<Option<Auth>>>;
 
+// How many seconds of system-wide inactivity before we stop sending activity
+// signals to the PWA. Must be shorter than the PWA's IDLE_THRESHOLD_SEC (120 s)
+// so that when the user goes idle, Tauri stops flushing fast enough for the
+// PWA idle checker to fire within a reasonable window.
+const SYSTEM_IDLE_CUTOFF_SEC: u64 = 60;
+
 // Returns the name of the currently focused app via NSWorkspace.
 // This requires no macOS permissions — app name is public information
 // exposed to any process by the OS.
@@ -22,6 +28,37 @@ fn active_app_name() -> Option<String> {
 #[cfg(not(target_os = "macos"))]
 fn active_app_name() -> Option<String> {
     None
+}
+
+// Returns seconds since the last system-wide keyboard or mouse event using
+// IOKit's HIDIdleTime counter. No special macOS permissions required.
+// Returns 0 on any error (safe default: assume user is active).
+#[cfg(target_os = "macos")]
+fn system_idle_sec() -> u64 {
+    let out = std::process::Command::new("ioreg")
+        .args(["-c", "IOHIDSystem"])
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok());
+
+    out.and_then(|s| {
+        for line in s.lines() {
+            if line.contains("HIDIdleTime") {
+                if let Some(val) = line.split('=').nth(1) {
+                    if let Ok(ns) = val.trim().parse::<u64>() {
+                        return Some(ns / 1_000_000_000);
+                    }
+                }
+            }
+        }
+        None
+    })
+    .unwrap_or(0)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn system_idle_sec() -> u64 {
+    0 // assume active on non-macOS
 }
 
 pub async fn run(auth_state: SharedAuth) {
@@ -96,9 +133,20 @@ pub async fn run(auth_state: SharedAuth) {
             }
             Some(a) => {
                 if supabase::is_timer_running(&a).await {
-                    match supabase::flush(&a, &buffer).await {
-                        Ok(_) => buffer.clear(),
-                        Err(e) => eprintln!("[tandem] flush error: {e}"),
+                    let idle_sec = system_idle_sec();
+                    if idle_sec < SYSTEM_IDLE_CUTOFF_SEC {
+                        // User has been active in the last 60 s — flush app-time
+                        // data. This INSERT triggers the PWA's Realtime subscription
+                        // and calls recordActivity(), keeping the idle clock fresh.
+                        match supabase::flush(&a, &buffer).await {
+                            Ok(_) => buffer.clear(),
+                            Err(e) => eprintln!("[tandem] flush error: {e}"),
+                        }
+                    } else {
+                        // System idle — discard without flushing. No INSERT means
+                        // no Realtime signal, so the PWA idle checker can fire.
+                        eprintln!("[tandem] system idle {idle_sec}s ≥ {SYSTEM_IDLE_CUTOFF_SEC}s — skipping flush");
+                        buffer.clear();
                     }
                 } else {
                     buffer.clear();
