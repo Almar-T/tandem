@@ -4,6 +4,7 @@ import {
   startOfMonth, endOfMonth, addMonths, subMonths, isAfter,
 } from '@/lib/dates'
 import { Keyboard, Globe, ChevronLeft, ChevronRight } from 'lucide-react'
+import { DaySessionsModal } from './DaySessionsModal'
 import { useNavigate } from 'react-router-dom'
 import type { Profile, Task, WorkSession } from '@/lib/types'
 import { cn } from '@/lib/cn'
@@ -177,6 +178,7 @@ export function AnalyticsPage() {
           profile={p}
           index={i}
           sessions={scoped}
+          allSessions={sessions}
           tasks={tasks}
           chartDays={chartDays}
           view={view}
@@ -216,6 +218,7 @@ function UserSection({
   profile,
   index,
   sessions,
+  allSessions,
   tasks,
   chartDays,
   view,
@@ -224,11 +227,14 @@ function UserSection({
   profile: Profile
   index: number
   sessions: WorkSession[]
+  allSessions: WorkSession[]
   tasks: Task[]
   chartDays: Date[]
   view: ViewMode
   monthDate: Date
 }) {
+  const [selectedDay, setSelectedDay] = useState<Date | null>(null)
+
   const t = totalsFor(sessions, profile.id)
   const completed = tasks.filter(
     (task) =>
@@ -246,82 +252,102 @@ function UserSection({
   const labelEvery = view === 'month' ? 5 : view === '30days' ? 5 : 1
 
   return (
-    <div className="glass overflow-hidden rounded-2xl shadow-md">
-      {/* Summary row */}
-      <div className="border-b border-hearth-border/40 px-5 py-4">
-        <div className="flex flex-wrap items-baseline gap-3">
-          <span className="font-serif text-base font-semibold" style={{ color }}>
-            {profile.display_name}
-          </span>
-          <span className="font-serif text-2xl font-bold text-hearth-green">{formatHours(t.active + t.explained)}</span>
-          <span className="text-xs text-hearth-text/50">
-            total logged · {t.sessions} sessions
-            {completed > 0 && ` · ${completed} tasks done`}
-          </span>
-          <div className="ml-auto flex flex-wrap gap-3 text-[11px] text-hearth-text/50">
-            <span className="flex items-center gap-1.5">
-              <span className="inline-block h-2 w-2 rounded-sm bg-productive" />
-              {formatHours(t.active)} active
+    <>
+      <div className="glass overflow-hidden rounded-2xl shadow-md">
+        {/* Summary row */}
+        <div className="border-b border-hearth-border/40 px-5 py-4">
+          <div className="flex flex-wrap items-baseline gap-3">
+            <span className="font-serif text-base font-semibold" style={{ color }}>
+              {profile.display_name}
             </span>
-            <span className="flex items-center gap-1.5">
-              <span className="inline-block h-2 w-2 rounded-sm bg-explained" />
-              {formatHours(t.explained)} explained
+            <span className="font-serif text-2xl font-bold text-hearth-green">{formatHours(t.active + t.explained)}</span>
+            <span className="text-xs text-hearth-text/50">
+              total logged · {t.sessions} sessions
+              {completed > 0 && ` · ${completed} tasks done`}
             </span>
-            <span className="flex items-center gap-1.5">
-              <span className="inline-block h-2 w-2 rounded-sm bg-unexplained" />
-              {formatHours(t.unexplained)} idle
-            </span>
+            <div className="ml-auto flex flex-wrap gap-3 text-[11px] text-hearth-text/50">
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block h-2 w-2 rounded-sm bg-productive" />
+                {formatHours(t.active)} active
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block h-2 w-2 rounded-sm bg-explained" />
+                {formatHours(t.explained)} explained
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block h-2 w-2 rounded-sm bg-unexplained" />
+                {formatHours(t.unexplained)} idle
+              </span>
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Stacked bar chart */}
-      <div className="overflow-x-auto px-5 py-4">
-        <div
-          className="flex gap-0.5"
-          style={{ minWidth: chartDays.length > 14 ? `${chartDays.length * 18}px` : undefined, height: '8rem' }}
-        >
-          {bars.map(({ day, active, explained, unexplained }, idx) => {
-            const total = active + explained + unexplained
-            const barH = Math.max((total / maxSec) * 108, total > 0 ? 3 : 0)
-            const showLabel = idx % labelEvery === 0 || idx === bars.length - 1
-            return (
-              <div
-                key={day.toISOString()}
-                className="group relative flex flex-1 flex-col items-center justify-end gap-0.5"
-                style={{ minWidth: chartDays.length > 14 ? '16px' : undefined }}
-              >
-                {total > 0 && (
+        {/* Stacked bar chart — click any bar to open the day editor */}
+        <div className="overflow-x-auto px-5 py-4">
+          <p className="mb-2 text-[10px] text-hearth-text/35">Click a bar to view and edit sessions</p>
+          <div
+            className="flex gap-0.5"
+            style={{ minWidth: chartDays.length > 14 ? `${chartDays.length * 18}px` : undefined, height: '8rem' }}
+          >
+            {bars.map(({ day, active, explained, unexplained }, idx) => {
+              const total = active + explained + unexplained
+              const barH = Math.max((total / maxSec) * 108, total > 0 ? 3 : 0)
+              const showLabel = idx % labelEvery === 0 || idx === bars.length - 1
+              const isSelected = selectedDay !== null && isSameDay(day, selectedDay)
+              return (
+                <div
+                  key={day.toISOString()}
+                  onClick={() => setSelectedDay(day)}
+                  className="group relative flex flex-1 cursor-pointer flex-col items-center justify-end gap-0.5"
+                  style={{ minWidth: chartDays.length > 14 ? '16px' : undefined }}
+                >
+                  {/* Tooltip */}
                   <div className="pointer-events-none absolute bottom-full left-1/2 z-20 mb-1.5 hidden -translate-x-1/2 group-hover:block">
                     <div className="whitespace-nowrap rounded-lg bg-hearth-green px-2 py-1 text-[10px] font-medium text-hearth-cream shadow-lg">
-                      {format(day, 'EEE MMM d')} · {formatHours(total)}
+                      {format(day, 'EEE MMM d')}
+                      {total > 0 ? ` · ${formatHours(total)}` : ' · no sessions'}
                     </div>
                   </div>
-                )}
-                <div
-                  className="w-full overflow-hidden rounded-t-sm"
-                  style={{ height: `${barH}px` }}
-                >
-                  <div style={{ height: `${(active      / (total || 1)) * 100}%` }} className="w-full bg-productive" />
-                  <div style={{ height: `${(explained   / (total || 1)) * 100}%` }} className="w-full bg-explained" />
-                  <div style={{ height: `${(unexplained / (total || 1)) * 100}%` }} className="w-full bg-unexplained" />
+                  {/* Bar */}
+                  <div
+                    className={`w-full overflow-hidden rounded-t-sm transition-opacity ${isSelected ? 'ring-1 ring-hearth-gold ring-offset-1' : 'group-hover:opacity-80'}`}
+                    style={{ height: `${Math.max(barH, 3)}px` }}
+                  >
+                    {total > 0 ? (
+                      <>
+                        <div style={{ height: `${(active      / (total || 1)) * 100}%` }} className="w-full bg-productive" />
+                        <div style={{ height: `${(explained   / (total || 1)) * 100}%` }} className="w-full bg-explained" />
+                        <div style={{ height: `${(unexplained / (total || 1)) * 100}%` }} className="w-full bg-unexplained" />
+                      </>
+                    ) : (
+                      <div className="h-full w-full rounded-t-sm bg-hearth-border/20" />
+                    )}
+                  </div>
+                  <span className="text-[8px] text-hearth-text/40" style={{ visibility: showLabel ? 'visible' : 'hidden' }}>
+                    {view === 'week' ? format(day, 'EEEEE') : format(day, 'd')}
+                  </span>
                 </div>
-                <span className="text-[8px] text-hearth-text/40" style={{ visibility: showLabel ? 'visible' : 'hidden' }}>
-                  {view === 'week' ? format(day, 'EEEEE') : format(day, 'd')}
-                </span>
-              </div>
-            )
-          })}
-        </div>
-
-        {view === 'month' && (
-          <div className="mt-1 flex justify-between text-[9px] text-hearth-text/30">
-            <span>{format(monthDate, 'MMMM 1')}</span>
-            <span>{format(endOfMonth(monthDate), 'MMMM d')}</span>
+              )
+            })}
           </div>
-        )}
+
+          {view === 'month' && (
+            <div className="mt-1 flex justify-between text-[9px] text-hearth-text/30">
+              <span>{format(monthDate, 'MMMM 1')}</span>
+              <span>{format(endOfMonth(monthDate), 'MMMM d')}</span>
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+
+      <DaySessionsModal
+        day={selectedDay}
+        userId={profile.id}
+        sessions={allSessions}
+        tasks={tasks}
+        onClose={() => setSelectedDay(null)}
+      />
+    </>
   )
 }
 
