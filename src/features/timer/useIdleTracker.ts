@@ -54,11 +54,11 @@ export function useIdleTracker(enabled: boolean) {
     }
 
     const id = setInterval(() => {
-      // Skip only when the tab is fully hidden (minimized or background tab).
-      // Do NOT skip when the tab is visible but not focused — that's the normal
-      // case when the user is in another app, and Tauri/extension will keep
-      // lastActivityRef fresh via recordActivity() if they're actually working.
+      // Skip when the tab is hidden or when the window doesn't have focus.
+      // Idle should only fire when the user is actually looking at this tab
+      // and not touching anything — not while they're in another app.
       if (document.hidden) return
+      if (!document.hasFocus()) return
       if (firedRef.current) return
 
       const idleMs = Date.now() - lastActivityRef.current

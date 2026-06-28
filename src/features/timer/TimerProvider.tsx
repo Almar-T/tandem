@@ -21,10 +21,12 @@ interface TimerCtx {
   running: boolean
   activeSec: number
   idleNotice: string | null
+  awayNotice: string | null
   startError: string | null
   start: (task?: Task | null) => void
   stop: () => void
   resumeFromIdle: () => void
+  dismissAwayNotice: () => void
   recordActivity: () => void
 }
 
@@ -34,10 +36,11 @@ export function TimerProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth()
   const qc = useQueryClient()
 
-  const [task, setTask]         = useState<Task | null>(null)
-  const [running, setRunning]   = useState(false)
+  const [task, setTask]           = useState<Task | null>(null)
+  const [running, setRunning]     = useState(false)
   const [activeSec, setActiveSec] = useState(0)
   const [idleNotice, setIdleNotice] = useState<string | null>(null)
+  const [awayNotice, setAwayNotice] = useState<string | null>(null)
   const [startError, setStartError] = useState<string | null>(null)
 
   const sessionIdRef      = useRef<string | null>(null)
@@ -54,6 +57,10 @@ export function TimerProvider({ children }: { children: ReactNode }) {
   const activeAccumRef      = useRef(0)
   const activeStartRef      = useRef<number | null>(null)
   const unexplainedAccumRef = useRef(0)
+
+  // Tracks when the user left so we can report how long the timer was paused.
+  const awyStartRef        = useRef<number | null>(null)
+  const awayNoticeTimer    = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // ── Idle tracker (separate concern) ──────────────────────────────────────
   // Disabled while paused so it doesn't re-fire during the notice banner.
@@ -75,6 +82,18 @@ export function TimerProvider({ children }: { children: ReactNode }) {
       activeAccumRef.current += Math.floor((atMs - activeStartRef.current) / 1000)
       activeStartRef.current = null
     }
+  }
+
+  function dismissAwayNotice() {
+    if (awayNoticeTimer.current) clearTimeout(awayNoticeTimer.current)
+    setAwayNotice(null)
+  }
+
+  function showAwayNotice(awaySec: number) {
+    if (awayNoticeTimer.current) clearTimeout(awayNoticeTimer.current)
+    const mins = Math.round(awaySec / 60)
+    setAwayNotice(mins > 0 ? `Timer paused for ${mins} min while you were away` : 'Timer paused while you were away')
+    awayNoticeTimer.current = setTimeout(() => setAwayNotice(null), 5000)
   }
 
   // ── Idle event listener ───────────────────────────────────────────────────
@@ -113,46 +132,29 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener(IDLE_DETECTED_EVENT, onIdleDetected)
   }, [running])
 
-  // ── External activity feed (browser extension + Tauri companion) ──────────
-  // These keep the idle clock fresh when the user is active outside this tab.
-
-  useEffect(() => {
-    if (!running || !user) return
-    const channel = supabase
-      .channel('ext-activity')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'browser_activity', filter: `user_id=eq.${user.id}` },
-        () => { recordActivity() },
-      )
-      .subscribe()
-    return () => { supabase.removeChannel(channel) }
-  }, [running, user, recordActivity])
-
-  useEffect(() => {
-    if (!running || !user) return
-    const channel = supabase
-      .channel('tauri-heartbeat')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'desktop_activity', filter: `user_id=eq.${user.id}` },
-        () => { recordActivity() },
-      )
-      .subscribe()
-    return () => { supabase.removeChannel(channel) }
-  }, [running, user, recordActivity])
-
   // ── Visibility / focus (always-on, mounted once) ──────────────────────────
 
   useEffect(() => {
     function onHide() {
       if (!runningRef.current || appHiddenRef.current) return
       appHiddenRef.current = true
+      // Freeze active time the moment focus leaves — don't count other-app time.
+      commitActiveAt(Date.now())
+      activeStartRef.current = null
+      awyStartRef.current = Date.now()
     }
 
     function onShow() {
       if (!runningRef.current || !appHiddenRef.current) return
       appHiddenRef.current = false
+
+      // Report how long the timer was frozen if it was a meaningful absence.
+      if (awyStartRef.current !== null) {
+        const awaySec = Math.floor((Date.now() - awyStartRef.current) / 1000)
+        awyStartRef.current = null
+        if (awaySec >= 60) showAwayNotice(awaySec)
+      }
+
       if (activeStartRef.current === null && !pausedRef.current) {
         activeStartRef.current = Date.now()
       }
@@ -181,10 +183,7 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     const id = setInterval(() => {
       if (document.hidden) return
       if (pausedRef.current) return
-      if (appHiddenRef.current) {
-        setActiveSec(calcActiveSec())
-        return
-      }
+      if (appHiddenRef.current) return
       if (activeStartRef.current === null) activeStartRef.current = Date.now()
       setActiveSec(calcActiveSec())
     }, 1000)
@@ -198,9 +197,10 @@ export function TimerProvider({ children }: { children: ReactNode }) {
 
     setStartError(null)
     setIdleNotice(null)
+    setAwayNotice(null)
     pausedRef.current = false
     runningRef.current = true
-    appHiddenRef.current = document.hidden
+    appHiddenRef.current = document.hidden || !document.hasFocus()
 
     let sessionId: string | null = null
     try {
@@ -223,7 +223,7 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     setTask(next ?? null)
 
     activeAccumRef.current      = 0
-    activeStartRef.current      = Date.now()
+    activeStartRef.current      = appHiddenRef.current ? null : Date.now()
     unexplainedAccumRef.current = 0
 
     setActiveSec(0)
@@ -244,6 +244,8 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     pausedRef.current = false
     setRunning(false)
     setIdleNotice(null)
+    setAwayNotice(null)
+    dismissAwayNotice()
 
     const id = sessionIdRef.current
     sessionIdRef.current = null
@@ -280,10 +282,12 @@ export function TimerProvider({ children }: { children: ReactNode }) {
         running,
         activeSec,
         idleNotice,
+        awayNotice,
         startError,
         start,
         stop,
         resumeFromIdle,
+        dismissAwayNotice,
         recordActivity,
       }}
     >
