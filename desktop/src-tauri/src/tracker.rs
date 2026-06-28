@@ -61,7 +61,7 @@ fn system_idle_sec() -> u64 {
     0 // assume active on non-macOS
 }
 
-pub async fn run(auth_state: SharedAuth) {
+pub async fn run(auth_state: SharedAuth, app: tauri::AppHandle) {
     // buffer: app_name -> accumulated_seconds
     let mut buffer: HashMap<String, u32> = HashMap::new();
     let mut current_app: Option<String> = None;
@@ -89,10 +89,10 @@ pub async fn run(auth_state: SharedAuth) {
         }
         last_flush = Instant::now();
 
-        if let Some(ref app) = current_app {
+        if let Some(ref cur) = current_app {
             let elapsed = app_since.elapsed().as_secs() as u32;
             if elapsed > 0 {
-                *buffer.entry(app.clone()).or_insert(0) += elapsed;
+                *buffer.entry(cur.clone()).or_insert(0) += elapsed;
                 app_since = Instant::now();
             }
         }
@@ -111,47 +111,55 @@ pub async fn run(auth_state: SharedAuth) {
         };
 
         let auth = match maybe_auth {
-            None => None,
+            None => {
+                eprintln!("[tandem] not signed in — buffered data discarded");
+                buffer.clear();
+                continue;
+            }
             Some(a) if needs_refresh => match supabase::refresh(&a).await {
                 Ok(fresh) => {
                     supabase::save_auth(&fresh);
                     *auth_state.lock().unwrap() = Some(fresh.clone());
-                    Some(fresh)
+                    eprintln!("[tandem] token refreshed for {}", fresh.email);
+                    fresh
                 }
-                Err(_) => {
+                Err(e) => {
+                    eprintln!("[tandem] token refresh failed ({e}) — signed out, update tray");
                     *auth_state.lock().unwrap() = None;
                     supabase::clear_auth();
-                    None
+                    // Update the tray so the user knows tracking has stopped.
+                    crate::tray::update_tray_status(&app, "");
+                    buffer.clear();
+                    continue;
                 }
             },
-            Some(a) => Some(a),
+            Some(a) => a,
         };
 
-        match auth {
-            None => {
+        if !supabase::is_timer_running(&auth).await {
+            eprintln!("[tandem] HearthHall timer not running — buffered data discarded");
+            buffer.clear();
+            continue;
+        }
+
+        let idle_sec = system_idle_sec();
+        if idle_sec >= SYSTEM_IDLE_CUTOFF_SEC {
+            // System idle — discard without flushing. No INSERT means no Realtime
+            // signal, so the PWA idle checker can fire.
+            eprintln!("[tandem] system idle {idle_sec}s ≥ {SYSTEM_IDLE_CUTOFF_SEC}s — skipping flush");
+            buffer.clear();
+            continue;
+        }
+
+        // User has been active in the last 60 s — flush app-time data. This INSERT
+        // triggers the PWA's Realtime subscription and calls recordActivity(),
+        // keeping the idle clock fresh.
+        match supabase::flush(&auth, &buffer).await {
+            Ok(_) => {
+                eprintln!("[tandem] flushed {} app(s) for {}", buffer.len(), auth.email);
                 buffer.clear();
             }
-            Some(a) => {
-                if supabase::is_timer_running(&a).await {
-                    let idle_sec = system_idle_sec();
-                    if idle_sec < SYSTEM_IDLE_CUTOFF_SEC {
-                        // User has been active in the last 60 s — flush app-time
-                        // data. This INSERT triggers the PWA's Realtime subscription
-                        // and calls recordActivity(), keeping the idle clock fresh.
-                        match supabase::flush(&a, &buffer).await {
-                            Ok(_) => buffer.clear(),
-                            Err(e) => eprintln!("[tandem] flush error: {e}"),
-                        }
-                    } else {
-                        // System idle — discard without flushing. No INSERT means
-                        // no Realtime signal, so the PWA idle checker can fire.
-                        eprintln!("[tandem] system idle {idle_sec}s ≥ {SYSTEM_IDLE_CUTOFF_SEC}s — skipping flush");
-                        buffer.clear();
-                    }
-                } else {
-                    buffer.clear();
-                }
-            }
+            Err(e) => eprintln!("[tandem] flush error: {e}"),
         }
     }
 }
