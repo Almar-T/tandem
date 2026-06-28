@@ -2,74 +2,74 @@ import { useCallback, useEffect, useRef } from 'react'
 
 export const IDLE_DETECTED_EVENT = 'tandem:idle-detected'
 
-// How long without in-tab input before idle fires (seconds).
 export const IDLE_THRESHOLD_SEC = 120
-
-// How many seconds to rewind active time when idle is detected.
 export const IDLE_REWIND_SEC = 300
 
 export interface IdleDetectedDetail {
   rewindSec: number
 }
 
-// Standalone idle detector. When enabled, polls every second and dispatches
-// IDLE_DETECTED_EVENT on the window when the tab is visible + focused but
-// no user input has been seen for IDLE_THRESHOLD_SEC seconds.
-//
-// Window blur (user switched to another app or tab) resets the idle clock —
-// they are still working, just not here. Idle only fires for genuine
-// "screen is untouched" situations.
-//
-// Computer-wide detection (other apps, global key/mouse hooks) is physically
-// impossible from a browser PWA. Phase 10 Tauri companion can dispatch this
-// same IDLE_DETECTED_EVENT from native input hooks without any changes here.
+const log = (...args: unknown[]) => console.log('[idle]', ...args)
+
 export function useIdleTracker(enabled: boolean) {
   const lastActivityRef = useRef(Date.now())
   const firedRef = useRef(false)
 
-  const recordActivity = useCallback(() => {
+  const recordActivity = useCallback((source = 'unknown') => {
+    const prev = lastActivityRef.current
     lastActivityRef.current = Date.now()
     firedRef.current = false
+    log(`recordActivity source=${source} prev=${Math.round((Date.now() - prev) / 1000)}s ago`)
   }, [])
 
-  // Always track in-tab activity so lastActivityRef stays fresh even when disabled.
-  // NOTE: blur is intentionally NOT treated as activity. Switching away from the tab
-  // doesn't mean the user is active — Tauri/extension will call recordActivity() via
-  // their Supabase Realtime feeds if the user is genuinely working in another app.
-  // focus IS treated as activity: returning to the tab means the user is back.
   useEffect(() => {
     const events = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart']
-    events.forEach((e) => window.addEventListener(e, recordActivity, { passive: true }))
-    // focus fires when returning from another OS app.
-    // visibilitychange (hidden→visible) fires when returning from another browser tab.
-    // Both count as "user is back" and reset the idle clock.
-    window.addEventListener('focus', recordActivity)
-    function onVisibilityChange() { if (!document.hidden) recordActivity() }
+    events.forEach((e) => window.addEventListener(e, () => recordActivity(e), { passive: true }))
+    window.addEventListener('focus', () => recordActivity('window:focus'))
+    function onVisibilityChange() {
+      if (!document.hidden) {
+        log('visibilitychange → visible, resetting idle clock')
+        recordActivity('visibilitychange:visible')
+      } else {
+        log('visibilitychange → hidden, idle clock paused by document.hidden check')
+      }
+    }
     document.addEventListener('visibilitychange', onVisibilityChange)
     return () => {
-      events.forEach((e) => window.removeEventListener(e, recordActivity))
-      window.removeEventListener('focus', recordActivity)
+      events.forEach((e) => window.removeEventListener(e, () => recordActivity(e)))
+      window.removeEventListener('focus', () => recordActivity('window:focus'))
       document.removeEventListener('visibilitychange', onVisibilityChange)
     }
   }, [recordActivity])
 
   useEffect(() => {
+    log(`idle tracker ${enabled ? 'ENABLED' : 'DISABLED'}`)
     if (!enabled) {
       firedRef.current = false
       return
     }
 
     const id = setInterval(() => {
-      // Skip when the tab is hidden or when the window doesn't have focus.
-      // Idle should only fire when the user is actually looking at this tab
-      // and not touching anything — not while they're in another app.
-      if (document.hidden) return
-      if (!document.hasFocus()) return
+      if (document.hidden) {
+        // too noisy to log every tick — skip silently
+        return
+      }
+      if (!document.hasFocus()) {
+        // also skip silently to avoid log spam
+        return
+      }
       if (firedRef.current) return
 
       const idleMs = Date.now() - lastActivityRef.current
+      const idleSec = Math.round(idleMs / 1000)
+
+      if (idleSec > 0 && idleSec % 10 === 0) {
+        log(`idle tick: ${idleSec}s / ${IDLE_THRESHOLD_SEC}s threshold`)
+      }
+
       if (idleMs >= IDLE_THRESHOLD_SEC * 1000) {
         firedRef.current = true
+        log(`IDLE DETECTED after ${idleSec}s — dispatching event`)
         window.dispatchEvent(
           new CustomEvent<IdleDetectedDetail>(IDLE_DETECTED_EVENT, {
             detail: { rewindSec: IDLE_REWIND_SEC },
@@ -81,5 +81,5 @@ export function useIdleTracker(enabled: boolean) {
     return () => clearInterval(id)
   }, [enabled])
 
-  return { recordActivity }
+  return { recordActivity: (source?: string) => recordActivity(source ?? 'external') }
 }
