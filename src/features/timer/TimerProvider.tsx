@@ -171,11 +171,12 @@ export function TimerProvider({ children }: { children: ReactNode }) {
       log(`onHide called — runningRef=${runningRef.current} appHiddenRef=${appHiddenRef.current}`)
       if (!runningRef.current || appHiddenRef.current) return
       appHiddenRef.current = true
-      commitActiveAt(Date.now())
-      activeStartRef.current = null
-      activeAccumAtHideRef.current = activeAccumRef.current
+      // Do NOT freeze the timer here — let it keep running.
+      // The ticker's Tauri-silence check will freeze it if Tauri goes quiet.
+      // Snapshot calcActiveSec() (not just accum) so onShow can measure gained time.
+      activeAccumAtHideRef.current = calcActiveSec()
       awyStartRef.current = Date.now()
-      log(`onHide: timer frozen, accum=${activeAccumRef.current}s, document.hidden=${document.hidden} hasFocus=${document.hasFocus()}`)
+      log(`onHide: timer continues, snapshot=${activeAccumAtHideRef.current}s, document.hidden=${document.hidden} hasFocus=${document.hasFocus()}`)
     }
 
     function onShow() {
@@ -246,10 +247,13 @@ export function TimerProvider({ children }: { children: ReactNode }) {
       if (pausedRef.current) return
 
       if (appHiddenRef.current) {
+        // User is in another app. Keep counting unless Tauri has gone quiet,
+        // which means the user is genuinely idle (Tauri stops flushing after
+        // SYSTEM_IDLE_CUTOFF_SEC=60s of no keyboard/mouse anywhere on the system).
         if (activeStartRef.current !== null) {
           const tauriSilentMs = Date.now() - lastTauriSignalRef.current
-          if (tauriSilentMs >= IDLE_THRESHOLD_SEC * 1000) {
-            log(`ticker: Tauri silent ${Math.round(tauriSilentMs / 1000)}s — freezing timer at last signal`)
+          if (lastTauriSignalRef.current > 0 && tauriSilentMs >= IDLE_THRESHOLD_SEC * 1000) {
+            log(`ticker: Tauri silent ${Math.round(tauriSilentMs / 1000)}s — freezing at last signal`)
             commitActiveAt(lastTauriSignalRef.current)
           } else {
             setActiveSec(calcActiveSec())
