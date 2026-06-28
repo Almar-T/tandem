@@ -40,10 +40,16 @@ export function useIdleTracker(enabled: boolean) {
   useEffect(() => {
     const events = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart']
     events.forEach((e) => window.addEventListener(e, recordActivity, { passive: true }))
+    // focus fires when returning from another OS app.
+    // visibilitychange (hidden→visible) fires when returning from another browser tab.
+    // Both count as "user is back" and reset the idle clock.
     window.addEventListener('focus', recordActivity)
+    function onVisibilityChange() { if (!document.hidden) recordActivity() }
+    document.addEventListener('visibilitychange', onVisibilityChange)
     return () => {
       events.forEach((e) => window.removeEventListener(e, recordActivity))
       window.removeEventListener('focus', recordActivity)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
     }
   }, [recordActivity])
 
