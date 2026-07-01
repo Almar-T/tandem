@@ -33,7 +33,10 @@ export function useIdleTracker(
   useEffect(() => {
     const events = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart']
     events.forEach((e) => window.addEventListener(e, () => recordActivity(e), { passive: true }))
-    window.addEventListener('focus', () => recordActivity('window:focus'))
+    // window:focus is intentionally NOT registered here. macOS notifications,
+    // Spotlight, system dialogs etc. briefly steal focus then return it, firing
+    // focus events that silently reset the idle clock without any real user input.
+    // Actual user return is detected by their first mouse/keyboard event.
     function onVisibilityChange() {
       if (!document.hidden) {
         // Only reset the idle clock on visibility change when Tauri is NOT
@@ -53,7 +56,6 @@ export function useIdleTracker(
     document.addEventListener('visibilitychange', onVisibilityChange)
     return () => {
       events.forEach((e) => window.removeEventListener(e, () => recordActivity(e)))
-      window.removeEventListener('focus', () => recordActivity('window:focus'))
       document.removeEventListener('visibilitychange', onVisibilityChange)
     }
   }, [recordActivity, tauriSignalRef])

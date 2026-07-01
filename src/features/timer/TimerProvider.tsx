@@ -183,13 +183,16 @@ export function TimerProvider({ children }: { children: ReactNode }) {
       log(`onShow called — runningRef=${runningRef.current} appHiddenRef=${appHiddenRef.current}`)
       if (!runningRef.current || !appHiddenRef.current) return
       appHiddenRef.current = false
-      recordActivity('onShow')
 
       commitActiveAt(Date.now())
 
       if (awyStartRef.current !== null) {
         const awaySec = Math.floor((Date.now() - awyStartRef.current) / 1000)
         awyStartRef.current = null
+        // Only reset the idle clock for meaningful absences (≥ 5 s). Brief
+        // focus losses from macOS notifications or system dialogs (< 5 s) must
+        // not silently restart the idle countdown.
+        if (awaySec >= 5) recordActivity('onShow')
         const tauriGainedSec = activeAccumRef.current - activeAccumAtHideRef.current
         log(`onShow: awaySec=${awaySec} tauriGainedSec=${tauriGainedSec} accum=${activeAccumRef.current}s`)
         if (tauriGainedSec >= 60) {
