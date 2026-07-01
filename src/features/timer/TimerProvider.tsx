@@ -62,7 +62,7 @@ export function TimerProvider({ children }: { children: ReactNode }) {
   const awayNoticeTimer      = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const paused = idleNotice !== null
-  const { recordActivity } = useIdleTracker(running && !paused)
+  const { recordActivity } = useIdleTracker(running && !paused, lastTauriSignalRef)
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 

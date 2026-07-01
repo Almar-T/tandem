@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { type MutableRefObject, useCallback, useEffect, useRef } from 'react'
 
 export const IDLE_DETECTED_EVENT = 'tandem:idle-detected'
 
@@ -11,7 +11,15 @@ export interface IdleDetectedDetail {
 
 const log = (...args: unknown[]) => console.log('[idle]', ...args)
 
-export function useIdleTracker(enabled: boolean) {
+// tauriSignalRef: ref to lastTauriSignalRef from TimerProvider (0 = Tauri never
+// connected this session). When Tauri has signalled, idle is system-wide and the
+// interval runs regardless of focus/visibility. Without Tauri it falls back to
+// the original in-tab-only behaviour to avoid false idle fires while working in
+// other apps.
+export function useIdleTracker(
+  enabled: boolean,
+  tauriSignalRef?: MutableRefObject<number>,
+) {
   const lastActivityRef = useRef(Date.now())
   const firedRef = useRef(false)
 
@@ -25,13 +33,22 @@ export function useIdleTracker(enabled: boolean) {
   useEffect(() => {
     const events = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart']
     events.forEach((e) => window.addEventListener(e, () => recordActivity(e), { passive: true }))
-    // Clicking or keyboard-navigating back into the window is real user activity.
     window.addEventListener('focus', () => recordActivity('window:focus'))
-    // Visibility change is NOT user activity — the idle clock must keep ticking
-    // so that Tauri's absence-of-signal can be detected even while the screen
-    // is asleep or the window is in the background.
     function onVisibilityChange() {
-      log(`visibilitychange → ${document.hidden ? 'hidden' : 'visible'} (idle clock keeps ticking)`)
+      if (!document.hidden) {
+        // Only reset the idle clock on visibility change when Tauri is NOT
+        // active — with Tauri, returning to the page is not a user action and
+        // must not mask Tauri-silence-based idle detection.
+        const tauriActive = tauriSignalRef ? tauriSignalRef.current > 0 : false
+        if (!tauriActive) {
+          log('visibilitychange → visible, resetting idle clock (no Tauri)')
+          recordActivity('visibilitychange:visible')
+        } else {
+          log('visibilitychange → visible (Tauri active, idle clock keeps ticking)')
+        }
+      } else {
+        log('visibilitychange → hidden')
+      }
     }
     document.addEventListener('visibilitychange', onVisibilityChange)
     return () => {
@@ -39,7 +56,7 @@ export function useIdleTracker(enabled: boolean) {
       window.removeEventListener('focus', () => recordActivity('window:focus'))
       document.removeEventListener('visibilitychange', onVisibilityChange)
     }
-  }, [recordActivity])
+  }, [recordActivity, tauriSignalRef])
 
   useEffect(() => {
     log(`idle tracker ${enabled ? 'ENABLED' : 'DISABLED'}`)
@@ -48,20 +65,23 @@ export function useIdleTracker(enabled: boolean) {
       return
     }
 
-    // The interval runs unconditionally regardless of document visibility or
-    // focus. Idle is detected by the absence of Tauri heartbeat signals
-    // (system-wide activity tracked by the desktop companion). Those signals
-    // call recordActivity('tauri') via Realtime, resetting the clock while
-    // the user is active anywhere on the system. When Tauri stops signalling
-    // (system idle ≥ 60 s), this clock reaches IDLE_THRESHOLD_SEC and fires.
     const id = setInterval(() => {
+      // When Tauri has connected this session, run unconditionally — idle is
+      // driven by absence of Tauri heartbeats (system-wide). Without Tauri,
+      // keep the original guards so working in another app doesn't trigger idle.
+      const tauriActive = tauriSignalRef ? tauriSignalRef.current > 0 : false
+      if (!tauriActive) {
+        if (document.hidden) return
+        if (!document.hasFocus()) return
+      }
+
       if (firedRef.current) return
 
       const idleMs = Date.now() - lastActivityRef.current
       const idleSec = Math.round(idleMs / 1000)
 
       if (idleSec > 0 && idleSec % 10 === 0) {
-        log(`idle tick: ${idleSec}s / ${IDLE_THRESHOLD_SEC}s threshold`)
+        log(`idle tick: ${idleSec}s / ${IDLE_THRESHOLD_SEC}s threshold (tauriActive=${tauriActive})`)
       }
 
       if (idleMs >= IDLE_THRESHOLD_SEC * 1000) {
@@ -76,7 +96,7 @@ export function useIdleTracker(enabled: boolean) {
     }, 1000)
 
     return () => clearInterval(id)
-  }, [enabled])
+  }, [enabled, tauriSignalRef])
 
   return { recordActivity: (source?: string) => recordActivity(source ?? 'external') }
 }
