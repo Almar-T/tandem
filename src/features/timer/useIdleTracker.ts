@@ -25,7 +25,11 @@ export function useIdleTracker(enabled: boolean) {
   useEffect(() => {
     const events = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart']
     events.forEach((e) => window.addEventListener(e, () => recordActivity(e), { passive: true }))
+    // Clicking or keyboard-navigating back into the window is real user activity.
     window.addEventListener('focus', () => recordActivity('window:focus'))
+    // Visibility change is NOT user activity — the idle clock must keep ticking
+    // so that Tauri's absence-of-signal can be detected even while the screen
+    // is asleep or the window is in the background.
     function onVisibilityChange() {
       log(`visibilitychange → ${document.hidden ? 'hidden' : 'visible'} (idle clock keeps ticking)`)
     }
@@ -44,6 +48,12 @@ export function useIdleTracker(enabled: boolean) {
       return
     }
 
+    // The interval runs unconditionally regardless of document visibility or
+    // focus. Idle is detected by the absence of Tauri heartbeat signals
+    // (system-wide activity tracked by the desktop companion). Those signals
+    // call recordActivity('tauri') via Realtime, resetting the clock while
+    // the user is active anywhere on the system. When Tauri stops signalling
+    // (system idle ≥ 60 s), this clock reaches IDLE_THRESHOLD_SEC and fires.
     const id = setInterval(() => {
       if (firedRef.current) return
 
