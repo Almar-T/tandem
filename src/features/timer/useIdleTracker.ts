@@ -27,12 +27,7 @@ export function useIdleTracker(enabled: boolean) {
     events.forEach((e) => window.addEventListener(e, () => recordActivity(e), { passive: true }))
     window.addEventListener('focus', () => recordActivity('window:focus'))
     function onVisibilityChange() {
-      if (!document.hidden) {
-        log('visibilitychange → visible, resetting idle clock')
-        recordActivity('visibilitychange:visible')
-      } else {
-        log('visibilitychange → hidden, idle clock paused by document.hidden check')
-      }
+      log(`visibilitychange → ${document.hidden ? 'hidden' : 'visible'} (idle clock keeps ticking)`)
     }
     document.addEventListener('visibilitychange', onVisibilityChange)
     return () => {
@@ -50,14 +45,6 @@ export function useIdleTracker(enabled: boolean) {
     }
 
     const id = setInterval(() => {
-      if (document.hidden) {
-        // too noisy to log every tick — skip silently
-        return
-      }
-      if (!document.hasFocus()) {
-        // also skip silently to avoid log spam
-        return
-      }
       if (firedRef.current) return
 
       const idleMs = Date.now() - lastActivityRef.current
