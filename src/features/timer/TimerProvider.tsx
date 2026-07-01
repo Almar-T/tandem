@@ -56,7 +56,6 @@ export function TimerProvider({ children }: { children: ReactNode }) {
   const unexplainedAccumRef  = useRef(0)
 
   const lastTauriSignalRef   = useRef(0)
-  const activeAccumAtHideRef = useRef(0)
 
   const awyStartRef          = useRef<number | null>(null)
   const awayNoticeTimer      = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -88,14 +87,7 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     setAwayNotice(null)
   }
 
-  function showAwayNotice(msg: string) {
-    log(`awayNotice: "${msg}"`)
-    if (awayNoticeTimer.current) clearTimeout(awayNoticeTimer.current)
-    setAwayNotice(msg)
-    awayNoticeTimer.current = setTimeout(() => setAwayNotice(null), 6000)
-  }
-
-  function onTauriActivity() {
+function onTauriActivity() {
     if (!runningRef.current) {
       log('tauri signal ignored — timer not running')
       return
@@ -171,14 +163,10 @@ export function TimerProvider({ children }: { children: ReactNode }) {
       log(`onHide called — runningRef=${runningRef.current} appHiddenRef=${appHiddenRef.current}`)
       if (!runningRef.current || appHiddenRef.current) return
       appHiddenRef.current = true
-      // Freeze the timer at this moment. onTauriActivity() will restart
-      // activeStartRef only when Tauri heartbeats arrive, so accumulated
-      // time while hidden reflects genuine desk activity — not just elapsed time.
-      // Without this freeze, tauriGainedSec always equals awaySec (wrong).
-      commitActiveAt(Date.now())
-      activeAccumAtHideRef.current = activeAccumRef.current
+      // Timer keeps running — user may be active in another app.
+      // Tauri heartbeats continue resetting the idle clock while hidden.
       awyStartRef.current = Date.now()
-      log(`onHide: timer frozen at ${activeAccumRef.current}s, document.hidden=${document.hidden} hasFocus=${document.hasFocus()}`)
+      log(`onHide: timer continues, document.hidden=${document.hidden} hasFocus=${document.hasFocus()}`)
     }
 
     function onShow() {
@@ -186,28 +174,14 @@ export function TimerProvider({ children }: { children: ReactNode }) {
       if (!runningRef.current || !appHiddenRef.current) return
       appHiddenRef.current = false
 
-      commitActiveAt(Date.now())
-
       if (awyStartRef.current !== null) {
         const awaySec = Math.floor((Date.now() - awyStartRef.current) / 1000)
         awyStartRef.current = null
+        log(`onShow: awaySec=${awaySec}`)
         // Only reset the idle clock for meaningful absences (≥ 5 s). Brief
         // focus losses from macOS notifications or system dialogs (< 5 s) must
         // not silently restart the idle countdown.
         if (awaySec >= 5) recordActivity('onShow')
-        const tauriGainedSec = activeAccumRef.current - activeAccumAtHideRef.current
-        log(`onShow: awaySec=${awaySec} tauriGainedSec=${tauriGainedSec} accum=${activeAccumRef.current}s`)
-        if (tauriGainedSec >= 60) {
-          const mins = Math.round(tauriGainedSec / 60)
-          showAwayNotice(`Tauri tracked ${mins} min in other apps while you were away`)
-        } else if (awaySec >= 30) {
-          const mins = Math.round(awaySec / 60)
-          showAwayNotice(
-            mins > 0
-              ? `Timer paused for ${mins} min while you were away`
-              : 'Timer was paused while you were away',
-          )
-        }
       }
 
       if (activeStartRef.current === null && !pausedRef.current) {
@@ -314,7 +288,6 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     activeStartRef.current      = appHiddenRef.current ? null : Date.now()
     unexplainedAccumRef.current = 0
     lastTauriSignalRef.current  = 0
-    activeAccumAtHideRef.current = 0
 
     log(`start: running appHidden=${appHiddenRef.current} activeStart=${activeStartRef.current !== null}`)
     setActiveSec(0)
