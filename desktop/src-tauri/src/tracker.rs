@@ -30,30 +30,37 @@ fn active_app_name() -> Option<String> {
     None
 }
 
-// Returns seconds since the last system-wide keyboard or mouse event using
-// IOKit's HIDIdleTime counter. No special macOS permissions required.
-// Returns 0 on any error (safe default: assume user is active).
+// Returns seconds since the last keyboard key-press or mouse movement/click.
+// Uses CGEventSourceSecondsSinceLastEventType which lets us query specific
+// event types — so only real keyboard and mouse input counts, not Bluetooth
+// audio controls, game controllers, or other HID peripherals that would
+// otherwise reset IOHIDSystem's blunt HIDIdleTime counter.
+// No special macOS permissions required. Returns 0 on any error.
 #[cfg(target_os = "macos")]
 fn system_idle_sec() -> u64 {
-    let out = std::process::Command::new("ioreg")
-        .args(["-c", "IOHIDSystem"])
-        .output()
-        .ok()
-        .and_then(|o| String::from_utf8(o.stdout).ok());
+    #[link(name = "CoreGraphics", kind = "framework")]
+    extern "C" {
+        fn CGEventSourceSecondsSinceLastEventType(state_id: i32, event_type: u32) -> f64;
+    }
 
-    out.and_then(|s| {
-        for line in s.lines() {
-            if line.contains("HIDIdleTime") {
-                if let Some(val) = line.split('=').nth(1) {
-                    if let Ok(ns) = val.trim().parse::<u64>() {
-                        return Some(ns / 1_000_000_000);
-                    }
-                }
-            }
-        }
-        None
-    })
-    .unwrap_or(0)
+    // CGEventSourceStateID::HIDSystemState = 1
+    const HID: i32 = 1;
+    // CGEventType values (CGEvent.h)
+    const LEFT_MOUSE_DOWN:  u32 = 1;
+    const RIGHT_MOUSE_DOWN: u32 = 3;
+    const MOUSE_MOVED:      u32 = 5;
+    const KEY_DOWN:         u32 = 10;
+    const FLAGS_CHANGED:    u32 = 12; // modifier keys (Shift, Ctrl, Cmd…)
+
+    let secs = unsafe {
+        let mouse_move  = CGEventSourceSecondsSinceLastEventType(HID, MOUSE_MOVED);
+        let left_click  = CGEventSourceSecondsSinceLastEventType(HID, LEFT_MOUSE_DOWN);
+        let right_click = CGEventSourceSecondsSinceLastEventType(HID, RIGHT_MOUSE_DOWN);
+        let key_down    = CGEventSourceSecondsSinceLastEventType(HID, KEY_DOWN);
+        let modifiers   = CGEventSourceSecondsSinceLastEventType(HID, FLAGS_CHANGED);
+        mouse_move.min(left_click).min(right_click).min(key_down).min(modifiers)
+    };
+    secs as u64
 }
 
 #[cfg(not(target_os = "macos"))]

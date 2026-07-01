@@ -22,6 +22,7 @@ export function useIdleTracker(
 ) {
   const lastActivityRef = useRef(Date.now())
   const firedRef = useRef(false)
+  const lastMousePos = useRef({ x: -Infinity, y: -Infinity })
 
   const recordActivity = useCallback((source = 'unknown') => {
     const prev = lastActivityRef.current
@@ -31,8 +32,22 @@ export function useIdleTracker(
   }, [])
 
   useEffect(() => {
-    const events = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart']
+    // Keyboard + non-mouse pointer events reset the clock directly.
+    const events = ['mousedown', 'keydown', 'scroll', 'touchstart']
     events.forEach((e) => window.addEventListener(e, () => recordActivity(e), { passive: true }))
+
+    // Mouse movement uses a deadzone to ignore sub-5 px jitter from optical
+    // sensors or trackpad vibration — only intentional movement counts.
+    const onMouseMove = (e: MouseEvent) => {
+      const dx = Math.abs(e.clientX - lastMousePos.current.x)
+      const dy = Math.abs(e.clientY - lastMousePos.current.y)
+      if (dx >= 5 || dy >= 5) {
+        lastMousePos.current = { x: e.clientX, y: e.clientY }
+        recordActivity('mousemove')
+      }
+    }
+    window.addEventListener('mousemove', onMouseMove, { passive: true })
+
     // window:focus is intentionally NOT registered here. macOS notifications,
     // Spotlight, system dialogs etc. briefly steal focus then return it, firing
     // focus events that silently reset the idle clock without any real user input.
@@ -56,6 +71,7 @@ export function useIdleTracker(
     document.addEventListener('visibilitychange', onVisibilityChange)
     return () => {
       events.forEach((e) => window.removeEventListener(e, () => recordActivity(e)))
+      window.removeEventListener('mousemove', onMouseMove)
       document.removeEventListener('visibilitychange', onVisibilityChange)
     }
   }, [recordActivity, tauriSignalRef])
