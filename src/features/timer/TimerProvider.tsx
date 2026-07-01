@@ -171,12 +171,14 @@ export function TimerProvider({ children }: { children: ReactNode }) {
       log(`onHide called — runningRef=${runningRef.current} appHiddenRef=${appHiddenRef.current}`)
       if (!runningRef.current || appHiddenRef.current) return
       appHiddenRef.current = true
-      // Do NOT freeze the timer here — let it keep running.
-      // The ticker's Tauri-silence check will freeze it if Tauri goes quiet.
-      // Snapshot calcActiveSec() (not just accum) so onShow can measure gained time.
-      activeAccumAtHideRef.current = calcActiveSec()
+      // Freeze the timer at this moment. onTauriActivity() will restart
+      // activeStartRef only when Tauri heartbeats arrive, so accumulated
+      // time while hidden reflects genuine desk activity — not just elapsed time.
+      // Without this freeze, tauriGainedSec always equals awaySec (wrong).
+      commitActiveAt(Date.now())
+      activeAccumAtHideRef.current = activeAccumRef.current
       awyStartRef.current = Date.now()
-      log(`onHide: timer continues, snapshot=${activeAccumAtHideRef.current}s, document.hidden=${document.hidden} hasFocus=${document.hasFocus()}`)
+      log(`onHide: timer frozen at ${activeAccumRef.current}s, document.hidden=${document.hidden} hasFocus=${document.hasFocus()}`)
     }
 
     function onShow() {
