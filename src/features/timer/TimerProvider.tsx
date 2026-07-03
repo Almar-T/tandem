@@ -26,6 +26,7 @@ interface TimerCtx {
   idleNotice: string | null
   awayNotice: string | null
   startError: string | null
+  tauriConnected: boolean
   start: (task?: Task | null) => void
   stop: () => void
   resumeFromIdle: () => void
@@ -56,9 +57,11 @@ export function TimerProvider({ children }: { children: ReactNode }) {
   const unexplainedAccumRef  = useRef(0)
 
   const lastTauriSignalRef   = useRef(0)
+  const [tauriLastSeen, setTauriLastSeen] = useState(0)
 
   const awyStartRef          = useRef<number | null>(null)
   const awayNoticeTimer      = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const hiddenIdleTimerRef   = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const paused = idleNotice !== null
   const { recordActivity } = useIdleTracker(running && !paused, lastTauriSignalRef)
@@ -94,6 +97,7 @@ function onTauriActivity() {
     }
     const prev = lastTauriSignalRef.current
     lastTauriSignalRef.current = Date.now()
+    setTauriLastSeen(Date.now())
     log(`tauri signal received (prev was ${prev ? Math.round((Date.now() - prev) / 1000) + 's ago' : 'never'})`)
     recordActivity('tauri')
     if (appHiddenRef.current && !pausedRef.current && activeStartRef.current === null) {
@@ -163,16 +167,33 @@ function onTauriActivity() {
       log(`onHide called — runningRef=${runningRef.current} appHiddenRef=${appHiddenRef.current}`)
       if (!runningRef.current || appHiddenRef.current) return
       appHiddenRef.current = true
-      // Timer keeps running — user may be active in another app.
-      // Tauri heartbeats continue resetting the idle clock while hidden.
       awyStartRef.current = Date.now()
-      log(`onHide: timer continues, document.hidden=${document.hidden} hasFocus=${document.hasFocus()}`)
+      // If Tauri has never connected this session it can't detect cross-app
+      // idle, so fall back: fire idle after IDLE_THRESHOLD_SEC of HearthHall
+      // being hidden. With Tauri running, skip this — Tauri handles it.
+      if (lastTauriSignalRef.current === 0) {
+        hiddenIdleTimerRef.current = setTimeout(() => {
+          if (!runningRef.current || pausedRef.current || !appHiddenRef.current) return
+          log('hidden idle fallback — no Tauri signal this session, firing idle')
+          window.dispatchEvent(
+            new CustomEvent<IdleDetectedDetail>(IDLE_DETECTED_EVENT, {
+              detail: { rewindSec: IDLE_THRESHOLD_SEC },
+            }),
+          )
+        }, IDLE_THRESHOLD_SEC * 1000)
+      }
+      log(`onHide: timer continues (tauriEver=${lastTauriSignalRef.current > 0}), document.hidden=${document.hidden}`)
     }
 
     function onShow() {
       log(`onShow called — runningRef=${runningRef.current} appHiddenRef=${appHiddenRef.current}`)
       if (!runningRef.current || !appHiddenRef.current) return
       appHiddenRef.current = false
+
+      if (hiddenIdleTimerRef.current) {
+        clearTimeout(hiddenIdleTimerRef.current)
+        hiddenIdleTimerRef.current = null
+      }
 
       if (awyStartRef.current !== null) {
         const awaySec = Math.floor((Date.now() - awyStartRef.current) / 1000)
@@ -307,6 +328,10 @@ function onTauriActivity() {
     log(`stop() called — accum=${activeAccumRef.current}s unexplained=${unexplainedAccumRef.current}s`)
     runningRef.current = false
     pausedRef.current = false
+    if (hiddenIdleTimerRef.current) {
+      clearTimeout(hiddenIdleTimerRef.current)
+      hiddenIdleTimerRef.current = null
+    }
     setRunning(false)
     setIdleNotice(null)
     dismissAwayNotice()
@@ -350,6 +375,7 @@ function onTauriActivity() {
         idleNotice,
         awayNotice,
         startError,
+        tauriConnected: tauriLastSeen > 0,
         start,
         stop,
         resumeFromIdle,

@@ -138,17 +138,23 @@ export function AppShell() {
         <div className="flex items-center gap-2">
           {/* Timer chip — visible when session is running */}
           {timer.running && (
-            <div className={cn(
-              'hidden items-center gap-1.5 rounded-lg border px-2.5 py-1 font-mono text-xs sm:flex',
-              timer.idleNotice
-                ? 'border-explained/40 bg-explained/10 text-explained'
-                : 'border-productive/30 bg-productive/10 text-productive',
-            )}>
+            <div
+              title={timer.tauriConnected ? 'Desktop tracking active' : 'Desktop app not detected — idle detection limited to this tab'}
+              className={cn(
+                'hidden items-center gap-1.5 rounded-lg border px-2.5 py-1 font-mono text-xs sm:flex',
+                timer.idleNotice
+                  ? 'border-explained/40 bg-explained/10 text-explained'
+                  : 'border-productive/30 bg-productive/10 text-productive',
+              )}
+            >
               <span className={cn(
                 'h-1.5 w-1.5 rounded-full',
                 timer.idleNotice ? 'animate-pulse bg-explained' : 'bg-productive',
               )} />
               {timerClock(timer.activeSec)}
+              {!timer.tauriConnected && (
+                <span className="text-[10px] opacity-60" title="Start the desktop app for full idle tracking">⚠</span>
+              )}
             </div>
           )}
 
