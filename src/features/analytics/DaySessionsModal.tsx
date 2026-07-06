@@ -54,14 +54,19 @@ export function DaySessionsModal({
     .filter((s) => s.user_id === userId && isSameDay(new Date(s.started_at), day))
     .sort((a, b) => a.started_at.localeCompare(b.started_at))
 
-  const totalSec = daySessions.reduce((n, s) => n + s.active_sec, 0)
+  const totalSec = daySessions.reduce((n, s) => {
+    const isManual = (s.events as Record<string, unknown> | null)?.manual === true
+    return n + (isManual ? s.idle_explained_sec : s.active_sec)
+  }, 0)
   const isOwnDay = user?.id === userId
 
   function startEdit(s: WorkSession) {
     setConfirmDelete(null)
     setEditingId(s.id)
-    setEditHours(Math.floor(s.active_sec / 3600))
-    setEditMins(Math.floor((s.active_sec % 3600) / 60))
+    const isManual = (s.events as Record<string, unknown> | null)?.manual === true
+    const sec = isManual ? s.idle_explained_sec : s.active_sec
+    setEditHours(Math.floor(sec / 3600))
+    setEditMins(Math.floor((sec % 3600) / 60))
   }
 
   function cancelEdit() {
@@ -72,11 +77,13 @@ export function DaySessionsModal({
     const session = daySessions.find((s) => s.id === sessionId)
     const maxSec = session ? (wallSec(session) ?? Infinity) : Infinity
     const newSec = Math.min(Math.max(0, editHours * 3600 + editMins * 60), maxSec)
+    const isManual = (session?.events as Record<string, unknown> | null)?.manual === true
+    const patch = isManual ? { idle_explained_sec: newSec } : { active_sec: newSec }
     setSaving(true)
     try {
       const { error } = await supabase
         .from('work_sessions')
-        .update({ active_sec: newSec })
+        .update(patch)
         .eq('id', sessionId)
       if (error) throw error
       qc.invalidateQueries({ queryKey: ['work_sessions'] })
@@ -127,11 +134,14 @@ export function DaySessionsModal({
           const wall     = wallSec(s)
           const isEditing  = editingId === s.id
           const isConfirm  = confirmDelete === s.id
+          const isManual   = (s.events as Record<string, unknown> | null)?.manual === true
+          const manualNote = (s.events as Record<string, unknown> | null)?.note as string | undefined
+          const displaySec = isManual ? s.idle_explained_sec : s.active_sec
 
           return (
             <div
               key={s.id}
-              className="overflow-hidden rounded-xl border border-hearth-border/50 bg-white/60"
+              className="group overflow-hidden rounded-xl border border-hearth-border/50 bg-white/60"
             >
               {/* Session header row */}
               <div className="flex items-start justify-between gap-2 px-4 py-3">
@@ -149,7 +159,7 @@ export function DaySessionsModal({
                 {!isEditing && !isConfirm && (
                   <div className="flex shrink-0 items-center gap-1.5">
                     <span className="text-sm font-semibold tabular-nums text-hearth-green">
-                      {fmtDuration(s.active_sec)}
+                      {fmtDuration(displaySec)}
                     </span>
                     {isOwnDay && (
                       <>
@@ -172,6 +182,13 @@ export function DaySessionsModal({
                   </div>
                 )}
               </div>
+
+              {/* Manual note — revealed on hover */}
+              {!isEditing && !isConfirm && manualNote && (
+                <div className="hidden group-hover:block border-t border-hearth-gold/20 bg-hearth-gold/5 px-4 py-2">
+                  <p className="text-[10px] italic text-hearth-text/60">"{manualNote}"</p>
+                </div>
+              )}
 
               {/* Edit active time */}
               {isEditing && (
