@@ -89,6 +89,27 @@ pub async fn is_timer_running(auth: &Auth) -> bool {
     }
 }
 
+// Sends a tracker signal (e.g. "idle" or "active") to HearthHall via a special
+// row in desktop_activity. The app_name is wrapped in underscores (_idle_,
+// _active_) so the PWA Realtime handler can distinguish signals from real rows.
+pub async fn send_signal(auth: &Auth, signal: &str) -> Result<(), String> {
+    let client = reqwest::Client::new();
+    client
+        .post(format!("{}/rest/v1/desktop_activity", SUPABASE_URL))
+        .header("apikey", SUPABASE_ANON_KEY)
+        .header("Authorization", format!("Bearer {}", auth.access_token))
+        .header("Prefer", "return=minimal")
+        .json(&serde_json::json!([{
+            "user_id": auth.user_id,
+            "app_name": format!("_{signal}_"),
+            "active_sec": 0,
+        }]))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 // Map of app_name -> active_sec
 pub async fn flush(auth: &Auth, buffer: &HashMap<String, u32>) -> Result<(), String> {
     if buffer.is_empty() {

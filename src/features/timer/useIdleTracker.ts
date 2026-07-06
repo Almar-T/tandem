@@ -1,4 +1,4 @@
-import { type MutableRefObject, useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 
 export const IDLE_DETECTED_EVENT = 'tandem:idle-detected'
 
@@ -11,55 +11,21 @@ export interface IdleDetectedDetail {
 
 const log = (...args: unknown[]) => console.log('[idle]', ...args)
 
-export function useIdleTracker(
-  enabled: boolean,
-  tauriSignalRef?: MutableRefObject<number>,
-) {
+// Activity is tracked solely via explicit recordActivity() calls from Tauri
+// heartbeats (system-wide keyboard/mouse) or from returning to the Tandem tab
+// as a fallback when HearthHall isn't running. Browser event listeners inside
+// the tab are intentionally omitted — they would mask real idle periods when
+// the user is active in another app.
+export function useIdleTracker(enabled: boolean) {
   const lastActivityRef = useRef(Date.now())
   const firedRef = useRef(false)
-  const lastMousePos = useRef({ x: -Infinity, y: -Infinity })
 
   const recordActivity = useCallback((source = 'unknown') => {
-    // When Tauri is connected it tracks keyboard/mouse system-wide, so
-    // browser events are redundant and must not reset the idle clock —
-    // only Tauri heartbeats count. Without Tauri, browser events are
-    // the only signal available so they're allowed through.
-    const tauriConnected = tauriSignalRef ? tauriSignalRef.current > 0 : false
-    if (tauriConnected && source !== 'tauri') {
-      return
-    }
     const prev = lastActivityRef.current
     lastActivityRef.current = Date.now()
     firedRef.current = false
     log(`recordActivity source=${source} prev=${Math.round((Date.now() - prev) / 1000)}s ago`)
-  }, [tauriSignalRef])
-
-  useEffect(() => {
-    const events = ['mousedown', 'keydown', 'scroll', 'touchstart']
-    events.forEach((e) => window.addEventListener(e, () => recordActivity(e), { passive: true }))
-
-    const onMouseMove = (e: MouseEvent) => {
-      const dx = Math.abs(e.clientX - lastMousePos.current.x)
-      const dy = Math.abs(e.clientY - lastMousePos.current.y)
-      if (dx >= 5 || dy >= 5) {
-        lastMousePos.current = { x: e.clientX, y: e.clientY }
-        recordActivity('mousemove')
-      }
-    }
-    window.addEventListener('mousemove', onMouseMove, { passive: true })
-
-    document.addEventListener('visibilitychange', () => {
-      if (!document.hidden) {
-        const tauriConnected = tauriSignalRef ? tauriSignalRef.current > 0 : false
-        if (!tauriConnected) recordActivity('visibilitychange:visible')
-      }
-    })
-
-    return () => {
-      events.forEach((e) => window.removeEventListener(e, () => recordActivity(e)))
-      window.removeEventListener('mousemove', onMouseMove)
-    }
-  }, [recordActivity, tauriSignalRef])
+  }, [])
 
   useEffect(() => {
     log(`idle tracker ${enabled ? 'ENABLED' : 'DISABLED'}`)
@@ -68,23 +34,18 @@ export function useIdleTracker(
       return
     }
 
-    const id = setInterval(() => {
-      const tauriConnected = tauriSignalRef ? tauriSignalRef.current > 0 : false
-      // Without Tauri: only fire when the tab is visible and focused (can't
-      // tell if user is active in another app). With Tauri: run unconditionally
-      // — idle is driven purely by absence of Tauri heartbeats.
-      if (!tauriConnected) {
-        if (document.hidden) return
-        if (!document.hasFocus()) return
-      }
+    // Reset the clock when the tracker is enabled so the threshold is always
+    // measured from the moment the timer (re-)starts, not from page load.
+    lastActivityRef.current = Date.now()
 
+    const id = setInterval(() => {
       if (firedRef.current) return
 
       const idleMs = Date.now() - lastActivityRef.current
       const idleSec = Math.round(idleMs / 1000)
 
       if (idleSec > 0 && idleSec % 10 === 0) {
-        log(`idle tick: ${idleSec}s / ${IDLE_THRESHOLD_SEC}s (tauri=${tauriConnected})`)
+        log(`idle tick: ${idleSec}s / ${IDLE_THRESHOLD_SEC}s`)
       }
 
       if (idleMs >= IDLE_THRESHOLD_SEC * 1000) {
@@ -99,7 +60,7 @@ export function useIdleTracker(
     }, 1000)
 
     return () => clearInterval(id)
-  }, [enabled, tauriSignalRef])
+  }, [enabled])
 
   return { recordActivity: (source?: string) => recordActivity(source ?? 'external') }
 }

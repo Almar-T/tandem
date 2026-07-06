@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useRef, useState, type FormEvent } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { LayoutDashboard, ListTodo, Target, BarChart2, Menu, X, LogOut, Pencil } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
@@ -111,12 +111,8 @@ export function AppShell() {
 
   const isDashboard = pathname === '/'
 
-  // Treat every route change as user activity so the idle timer resets
-  // when navigating between screens (the old screen's idle state shouldn't
-  // carry over to the new one).
-  useEffect(() => {
-    if (timer.running) timer.recordActivity()
-  }, [pathname])
+  // Route changes don't need to reset the idle clock — the tracker owns idle
+  // detection system-wide via HearthHall, so navigation is irrelevant to it.
 
   return (
     <div className="flex h-full flex-col">

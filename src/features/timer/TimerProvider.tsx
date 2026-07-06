@@ -10,12 +10,6 @@ import { useQueryClient } from '@tanstack/react-query'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/auth/AuthProvider'
 import type { Task } from '@/lib/types'
-import {
-  useIdleTracker,
-  IDLE_DETECTED_EVENT,
-  IDLE_THRESHOLD_SEC,
-  type IdleDetectedDetail,
-} from './useIdleTracker'
 
 const log = (...args: unknown[]) => console.log('[timer]', ...args)
 
@@ -24,6 +18,7 @@ interface TimerCtx {
   running: boolean
   activeSec: number
   idleNotice: string | null
+  resumeNotice: string | null
   awayNotice: string | null
   startError: string | null
   tauriConnected: boolean
@@ -31,7 +26,7 @@ interface TimerCtx {
   stop: () => void
   resumeFromIdle: () => void
   dismissAwayNotice: () => void
-  recordActivity: () => void
+  dismissResumeNotice: () => void
 }
 
 const Ctx = createContext<TimerCtx | undefined>(undefined)
@@ -40,33 +35,30 @@ export function TimerProvider({ children }: { children: ReactNode }) {
   const { user } = useAuth()
   const qc = useQueryClient()
 
-  const [task, setTask]           = useState<Task | null>(null)
-  const [running, setRunning]     = useState(false)
-  const [activeSec, setActiveSec] = useState(0)
+  const [task, setTask]             = useState<Task | null>(null)
+  const [running, setRunning]       = useState(false)
+  const [activeSec, setActiveSec]   = useState(0)
   const [idleNotice, setIdleNotice] = useState<string | null>(null)
+  const [resumeNotice, setResumeNotice] = useState<string | null>(null)
   const [awayNotice, setAwayNotice] = useState<string | null>(null)
   const [startError, setStartError] = useState<string | null>(null)
 
-  const sessionIdRef       = useRef<string | null>(null)
-  const appHiddenRef       = useRef(false)
-  const runningRef         = useRef(false)
-  const pausedRef          = useRef(false)
+  const sessionIdRef   = useRef<string | null>(null)
+  const appHiddenRef   = useRef(false)
+  const runningRef     = useRef(false)
+  const pausedRef      = useRef(false)
 
-  const activeAccumRef       = useRef(0)
-  const activeStartRef       = useRef<number | null>(null)
-  const unexplainedAccumRef  = useRef(0)
+  const activeAccumRef      = useRef(0)
+  const activeStartRef      = useRef<number | null>(null)
+  const unexplainedAccumRef = useRef(0)
 
-  const lastTauriSignalRef   = useRef(0)
+  const lastTauriSignalRef  = useRef(0)
   const [tauriLastSeen, setTauriLastSeen] = useState(0)
 
-  const awyStartRef          = useRef<number | null>(null)
-  const awayNoticeTimer      = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const hiddenIdleTimerRef   = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const awyStartRef     = useRef<number | null>(null)
+  const awayNoticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const paused = idleNotice !== null
-  const { recordActivity } = useIdleTracker(running && !paused, lastTauriSignalRef)
-
-  // ── Helpers ───────────────────────────────────────────────────────────────
+  // ── Helpers ─────────────────────────────────────────────────────────────────
 
   function calcActiveSec(): number {
     return activeAccumRef.current + (
@@ -79,7 +71,7 @@ export function TimerProvider({ children }: { children: ReactNode }) {
   function commitActiveAt(atMs: number) {
     if (activeStartRef.current !== null) {
       const added = Math.floor((atMs - activeStartRef.current) / 1000)
-      log(`commitActiveAt: +${added}s → accum now ${activeAccumRef.current + added}s`)
+      log(`commitActiveAt: +${added}s → accum ${activeAccumRef.current + added}s`)
       activeAccumRef.current += added
       activeStartRef.current = null
     }
@@ -90,119 +82,157 @@ export function TimerProvider({ children }: { children: ReactNode }) {
     setAwayNotice(null)
   }
 
-function onTauriActivity() {
-    if (!runningRef.current) {
-      log('tauri signal ignored — timer not running')
-      return
-    }
-    const prev = lastTauriSignalRef.current
+  function dismissResumeNotice() {
+    setResumeNotice(null)
+  }
+
+  // ── Tracker signal handlers ─────────────────────────────────────────────────
+  //
+  // The HearthHall tracker (Rust/Tauri) owns all idle detection. It monitors
+  // system-wide keyboard/mouse activity every 15 s and sends explicit signals:
+  //   _idle_   → user inactive for 120 s → pause timer, rewind 2 min
+  //   _active_ → user returned → resume timer, show notification
+
+  function onTrackerIdle() {
+    if (!runningRef.current || pausedRef.current) return
+    commitActiveAt(Date.now())
+    const rewindSec = 120
+    const rewound = Math.min(activeAccumRef.current, rewindSec)
+    activeAccumRef.current -= rewound
+    unexplainedAccumRef.current += rewound
+    activeStartRef.current = null
+    pausedRef.current = true
+    setActiveSec(activeAccumRef.current)
+    const mins = Math.round(rewound / 60)
+    setResumeNotice(null)
+    setIdleNotice(
+      mins > 0
+        ? `Timer paused — ${mins} min removed for inactivity`
+        : 'Timer paused due to inactivity',
+    )
+    log(`IDLE signal: paused, rewound ${rewound}s (${mins}min)`)
+  }
+
+  function onTrackerActive() {
+    if (!runningRef.current || !pausedRef.current) return
+    log('ACTIVE signal: auto-resuming timer')
+    pausedRef.current = false
+    activeStartRef.current = Date.now()
+    setIdleNotice(null)
+    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    setResumeNotice(`Activity detected — timer resumed at ${time}. Tap OK when you've seen this.`)
+  }
+
+  function onTrackerActivity() {
+    if (!runningRef.current) return
     lastTauriSignalRef.current = Date.now()
     setTauriLastSeen(Date.now())
-    log(`tauri signal received (prev was ${prev ? Math.round((Date.now() - prev) / 1000) + 's ago' : 'never'})`)
-    recordActivity('tauri')
-    if (appHiddenRef.current && !pausedRef.current && activeStartRef.current === null) {
-      log('tauri signal → resuming frozen timer (user active in another app)')
+    // Resume frozen timer if user is active in another app.
+    if (appHiddenRef.current && activeStartRef.current === null && !pausedRef.current) {
       activeStartRef.current = Date.now()
-    } else {
-      log(`tauri signal → no resume needed (appHidden=${appHiddenRef.current} paused=${pausedRef.current} activeStart=${activeStartRef.current !== null})`)
     }
   }
 
-  // ── Idle event listener ───────────────────────────────────────────────────
+  // Keep refs current so Realtime/polling callbacks always use the latest closure.
+  const onTrackerIdleRef   = useRef<() => void>(() => {})
+  const onTrackerActiveRef = useRef<() => void>(() => {})
+  const onTrackerActivityRef = useRef<() => void>(() => {})
+  onTrackerIdleRef.current     = onTrackerIdle
+  onTrackerActiveRef.current   = onTrackerActive
+  onTrackerActivityRef.current = onTrackerActivity
 
-  useEffect(() => {
-    if (!running) return
-
-    function onIdleDetected(e: Event) {
-      const { rewindSec } = (e as CustomEvent<IdleDetectedDetail>).detail
-      log(`IDLE EVENT received, rewindSec=${rewindSec}, current accum=${activeAccumRef.current}s`)
-      commitActiveAt(Date.now())
-      const rewound = Math.min(activeAccumRef.current, rewindSec)
-      activeAccumRef.current -= rewound
-      unexplainedAccumRef.current += rewound
-      activeStartRef.current = null
-      pausedRef.current = true
-      setActiveSec(activeAccumRef.current)
-      const mins = Math.round(rewound / 60)
-      log(`idle: rewound ${rewound}s (${mins}min), accum now ${activeAccumRef.current}s`)
-      setIdleNotice(
-        mins > 0
-          ? `Timer paused — ${mins} min removed for inactivity`
-          : 'Timer paused due to inactivity',
-      )
-    }
-
-    window.addEventListener(IDLE_DETECTED_EVENT, onIdleDetected)
-    return () => window.removeEventListener(IDLE_DETECTED_EVENT, onIdleDetected)
-  }, [running])
-
-  // ── Tauri Realtime feed ───────────────────────────────────────────────────
+  // ── Tauri Realtime feed ──────────────────────────────────────────────────────
 
   useEffect(() => {
     if (!running || !user) return
-    log(`subscribing to tauri-heartbeat channel (user=${user.id})`)
+    const uid = user.id
+    log(`subscribing to tracker channel (user=${uid})`)
+
     const channel = supabase
-      .channel('tauri-heartbeat')
+      .channel(`tracker-${uid}`)
       .on(
         'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'desktop_activity', filter: `user_id=eq.${user.id}` },
+        { event: 'INSERT', schema: 'public', table: 'desktop_activity' },
         (payload) => {
-          log('tauri-heartbeat Realtime INSERT received', payload)
-          onTauriActivity()
+          const row = payload.new as Record<string, unknown>
+          if (row.user_id !== uid) return
+
+          // Any row means Realtime is working — suppress the polling fallback.
+          lastTauriSignalRef.current = Date.now()
+          setTauriLastSeen(Date.now())
+
+          const appName = row.app_name as string | undefined
+          if (appName === '_idle_') {
+            log('Realtime: IDLE signal from tracker')
+            onTrackerIdleRef.current()
+          } else if (appName === '_active_') {
+            log('Realtime: ACTIVE signal from tracker')
+            onTrackerActiveRef.current()
+          } else {
+            log('Realtime: activity heartbeat from tracker')
+            onTrackerActivityRef.current()
+          }
         },
       )
-      .subscribe((status) => {
-        log(`tauri-heartbeat channel status: ${status}`)
-      })
+      .subscribe((status) => log(`tracker channel status: ${status}`))
+
+    // Polling fallback — activates only when Realtime has been silent for 30 s
+    // (e.g. the desktop_activity table isn't in the Supabase Realtime publication).
+    // Checks for the most recent row and routes it the same way Realtime would.
+    const pollId = setInterval(async () => {
+      const silent = lastTauriSignalRef.current
+        ? Date.now() - lastTauriSignalRef.current
+        : Infinity
+      if (silent < 30_000) return
+
+      const since = new Date(Date.now() - 20_000).toISOString()
+      const { data } = await supabase
+        .from('desktop_activity')
+        .select('app_name')
+        .eq('user_id', uid)
+        .gte('created_at', since)
+        .order('created_at', { ascending: false })
+        .limit(1)
+
+      if (!data?.length) return
+      lastTauriSignalRef.current = Date.now()
+      const appName = data[0].app_name as string | undefined
+
+      if (appName === '_idle_') {
+        log('poll fallback: IDLE signal')
+        onTrackerIdleRef.current()
+      } else if (appName === '_active_') {
+        log('poll fallback: ACTIVE signal')
+        onTrackerActiveRef.current()
+      } else {
+        log('poll fallback: activity heartbeat')
+        onTrackerActivityRef.current()
+      }
+    }, 15_000)
+
     return () => {
-      log('unsubscribing tauri-heartbeat channel')
+      log('unsubscribing tracker channel')
       supabase.removeChannel(channel)
+      clearInterval(pollId)
     }
   }, [running, user])
 
-  // ── Visibility / focus ────────────────────────────────────────────────────
+  // ── Visibility / focus ───────────────────────────────────────────────────────
 
   useEffect(() => {
     function onHide() {
-      log(`onHide called — runningRef=${runningRef.current} appHiddenRef=${appHiddenRef.current}`)
       if (!runningRef.current || appHiddenRef.current) return
       appHiddenRef.current = true
       awyStartRef.current = Date.now()
-      // If Tauri has never connected this session it can't detect cross-app
-      // idle, so fall back: fire idle after IDLE_THRESHOLD_SEC of HearthHall
-      // being hidden. With Tauri running, skip this — Tauri handles it.
-      if (lastTauriSignalRef.current === 0) {
-        hiddenIdleTimerRef.current = setTimeout(() => {
-          if (!runningRef.current || pausedRef.current || !appHiddenRef.current) return
-          log('hidden idle fallback — no Tauri signal this session, firing idle')
-          window.dispatchEvent(
-            new CustomEvent<IdleDetectedDetail>(IDLE_DETECTED_EVENT, {
-              detail: { rewindSec: IDLE_THRESHOLD_SEC },
-            }),
-          )
-        }, IDLE_THRESHOLD_SEC * 1000)
-      }
-      log(`onHide: timer continues (tauriEver=${lastTauriSignalRef.current > 0}), document.hidden=${document.hidden}`)
+      log(`onHide: timer continues in background`)
     }
 
     function onShow() {
-      log(`onShow called — runningRef=${runningRef.current} appHiddenRef=${appHiddenRef.current}`)
       if (!runningRef.current || !appHiddenRef.current) return
       appHiddenRef.current = false
 
-      if (hiddenIdleTimerRef.current) {
-        clearTimeout(hiddenIdleTimerRef.current)
-        hiddenIdleTimerRef.current = null
-      }
-
       if (awyStartRef.current !== null) {
-        const awaySec = Math.floor((Date.now() - awyStartRef.current) / 1000)
         awyStartRef.current = null
-        log(`onShow: awaySec=${awaySec}`)
-        // Only reset the idle clock for meaningful absences (≥ 5 s). Brief
-        // focus losses from macOS notifications or system dialogs (< 5 s) must
-        // not silently restart the idle countdown.
-        if (awaySec >= 5) recordActivity('onShow')
       }
 
       if (activeStartRef.current === null && !pausedRef.current) {
@@ -213,32 +243,21 @@ function onTauriActivity() {
     }
 
     function onVisibilityChange() {
-      log(`visibilitychange: document.hidden=${document.hidden} hasFocus=${document.hasFocus()}`)
       if (document.hidden) onHide()
       else onShow()
     }
 
-    function onBlur() {
-      log(`window blur — document.hidden=${document.hidden} hasFocus=${document.hasFocus()}`)
-      onHide()
-    }
-
-    function onFocus() {
-      log(`window focus — document.hidden=${document.hidden} hasFocus=${document.hasFocus()}`)
-      onShow()
-    }
-
     document.addEventListener('visibilitychange', onVisibilityChange)
-    window.addEventListener('blur', onBlur)
-    window.addEventListener('focus', onFocus)
+    window.addEventListener('blur', onHide)
+    window.addEventListener('focus', onShow)
     return () => {
       document.removeEventListener('visibilitychange', onVisibilityChange)
-      window.removeEventListener('blur', onBlur)
-      window.removeEventListener('focus', onFocus)
+      window.removeEventListener('blur', onHide)
+      window.removeEventListener('focus', onShow)
     }
   }, [])
 
-  // ── Ticker ────────────────────────────────────────────────────────────────
+  // ── Ticker ───────────────────────────────────────────────────────────────────
 
   useEffect(() => {
     if (!running) return
@@ -247,23 +266,11 @@ function onTauriActivity() {
       if (pausedRef.current) return
 
       if (appHiddenRef.current) {
-        // User is in another app. Keep counting unless Tauri has gone quiet,
-        // which means the user is genuinely idle (Tauri stops flushing after
-        // SYSTEM_IDLE_CUTOFF_SEC=60s of no keyboard/mouse anywhere on the system).
-        if (activeStartRef.current !== null) {
-          const tauriSilentMs = Date.now() - lastTauriSignalRef.current
-          if (lastTauriSignalRef.current > 0 && tauriSilentMs >= IDLE_THRESHOLD_SEC * 1000) {
-            log(`ticker: Tauri silent ${Math.round(tauriSilentMs / 1000)}s — freezing at last signal`)
-            commitActiveAt(lastTauriSignalRef.current)
-          } else {
-            setActiveSec(calcActiveSec())
-          }
-        }
+        if (activeStartRef.current !== null) setActiveSec(calcActiveSec())
         return
       }
 
       if (activeStartRef.current === null) {
-        log('ticker: activeStartRef was null while in-tab — starting stretch now')
         activeStartRef.current = Date.now()
       }
       setActiveSec(calcActiveSec())
@@ -271,14 +278,15 @@ function onTauriActivity() {
     return () => clearInterval(id)
   }, [running])
 
-  // ── Public actions ────────────────────────────────────────────────────────
+  // ── Public actions ───────────────────────────────────────────────────────────
 
   async function start(next?: Task | null) {
-    log(`start() called — task=${next?.title ?? 'none'} document.hidden=${document.hidden} hasFocus=${document.hasFocus()}`)
+    log(`start() — task=${next?.title ?? 'none'}`)
     if (sessionIdRef.current) await stop()
 
     setStartError(null)
     setIdleNotice(null)
+    setResumeNotice(null)
     setAwayNotice(null)
     pausedRef.current = false
     runningRef.current = true
@@ -310,7 +318,6 @@ function onTauriActivity() {
     unexplainedAccumRef.current = 0
     lastTauriSignalRef.current  = 0
 
-    log(`start: running appHidden=${appHiddenRef.current} activeStart=${activeStartRef.current !== null}`)
     setActiveSec(0)
     setRunning(true)
 
@@ -325,15 +332,12 @@ function onTauriActivity() {
   }
 
   async function stop() {
-    log(`stop() called — accum=${activeAccumRef.current}s unexplained=${unexplainedAccumRef.current}s`)
+    log(`stop() — accum=${activeAccumRef.current}s unexplained=${unexplainedAccumRef.current}s`)
     runningRef.current = false
     pausedRef.current = false
-    if (hiddenIdleTimerRef.current) {
-      clearTimeout(hiddenIdleTimerRef.current)
-      hiddenIdleTimerRef.current = null
-    }
     setRunning(false)
     setIdleNotice(null)
+    setResumeNotice(null)
     dismissAwayNotice()
 
     const id = sessionIdRef.current
@@ -359,11 +363,11 @@ function onTauriActivity() {
   }
 
   function resumeFromIdle() {
-    log('resumeFromIdle called')
-    recordActivity('resumeFromIdle')
+    log('resumeFromIdle (manual)')
     pausedRef.current = false
     activeStartRef.current = Date.now()
     setIdleNotice(null)
+    setResumeNotice(null)
   }
 
   return (
@@ -373,6 +377,7 @@ function onTauriActivity() {
         running,
         activeSec,
         idleNotice,
+        resumeNotice,
         awayNotice,
         startError,
         tauriConnected: tauriLastSeen > 0,
@@ -380,7 +385,7 @@ function onTauriActivity() {
         stop,
         resumeFromIdle,
         dismissAwayNotice,
-        recordActivity,
+        dismissResumeNotice,
       }}
     >
       {children}

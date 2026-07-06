@@ -29,8 +29,33 @@ export function TimerBar() {
               Resume
             </button>
           </div>
+          <div className="h-1 w-full bg-productive/30">
+            <div
+              className="h-full bg-productive transition-all duration-300"
+              style={{ width: `${Math.min((t.activeSec / Math.max(t.activeSec + 300, 1)) * 100, 100)}%` }}
+            />
+          </div>
+        </div>
+      </div>
+    )
+  }
 
-          {/* Active time bar */}
+  if (t.resumeNotice) {
+    return (
+      <div className="fixed bottom-24 left-6 z-40 w-72 animate-fade-up">
+        <div className="glass overflow-hidden rounded-2xl border border-hearth-green/30 shadow-lg">
+          <div className="px-4 py-3">
+            <div className="mb-1 text-xs font-semibold text-hearth-green">Timer resumed</div>
+            <div className="mb-3 text-[11px] leading-relaxed text-hearth-text/70">
+              {t.resumeNotice}
+            </div>
+            <button
+              onClick={t.dismissResumeNotice}
+              className="w-full rounded-lg bg-hearth-green px-3 py-1.5 text-xs font-medium text-hearth-cream transition hover:bg-hearth-text"
+            >
+              OK
+            </button>
+          </div>
           <div className="h-1 w-full bg-productive/30">
             <div
               className="h-full bg-productive transition-all duration-300"
