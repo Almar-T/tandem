@@ -1,0 +1,6 @@
+{
+  "version": "1.0.1",
+  "notes": "## HearthHall Desktop Companion + Browser Extension\n\n### Browser Extension (Chrome) \u2014 first time only\n1. Download **hearth-hall-extension.zip** below and unzip it\n2. Chrome \u2192 `chrome://extensions` \u2192 enable **Developer mode**\n3. **Load unpacked** \u2192 select the unzipped folder\n4. Sign in with your HearthHall email in the extension popup\n\n> **Already installed?** The extension auto-updates \u2014 just reload it in `chrome://extensions` after your machine pulls the latest changes.\n\n### Desktop App (activity tracker)\n| Platform | File |\n|----------|------|\n| macOS (Apple Silicon + Intel) | `.dmg` |\n| Windows | `.exe` installer |\n\nRun the installer and the app will appear in your menu bar / system tray.\nFuture updates are automatic \u2014 the app checks on startup and prompts you to install.\n",
+  "pub_date": "2026-07-07T20:10:36Z",
+  "platforms": {}
+}
