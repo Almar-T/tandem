@@ -39,6 +39,9 @@ export function GoalEditor({
   const [status, setStatus] = useState<GoalStatus>('active')
   const [milestones, setMilestones] = useState<MilestoneDraft[]>([])
 
+  // Reset form when modal opens or the goal being edited changes.
+  // Deliberately excludes `goal` (object ref) and `existing` (new [] on every render
+  // when the milestones query is disabled) — both would reset the form on every keystroke.
   useEffect(() => {
     if (!open) return
     setTitle(goal?.title ?? '')
@@ -51,7 +54,8 @@ export function GoalEditor({
         ? existing.map((m) => ({ title: m.title, target_date: m.target_date, done: m.done }))
         : [],
     )
-  }, [open, goal, existing])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, goal?.id])
 
   const busy = create.isPending || update.isPending
 
