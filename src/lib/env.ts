@@ -16,4 +16,6 @@ export const env = {
   supabaseAnonKey: required('VITE_SUPABASE_ANON_KEY', import.meta.env.VITE_SUPABASE_ANON_KEY),
   // Optional until push is wired up in Phase 8.
   vapidPublicKey: import.meta.env.VITE_VAPID_PUBLIC_KEY as string | undefined,
+  // Optional — set to enable the Google Calendar integration.
+  googleClientId: import.meta.env.VITE_GOOGLE_CLIENT_ID as string | undefined,
 }

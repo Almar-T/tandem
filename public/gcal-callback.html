@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Connecting…</title></head>
+<body>
+<p style="font-family:sans-serif;color:#1b2a1e;padding:2rem">Connecting your calendar…</p>
+<script>
+  const params = new URLSearchParams(window.location.search);
+  const code  = params.get('code');
+  const state = params.get('state');
+  const error = params.get('error');
+
+  if (window.opener) {
+    window.opener.postMessage(
+      { type: 'gcal_oauth', code, state, error },
+      window.location.origin
+    );
+    window.close();
+  } else {
+    document.querySelector('p').textContent = 'Authentication complete. You can close this window.';
+  }
+</script>
+</body>
+</html>

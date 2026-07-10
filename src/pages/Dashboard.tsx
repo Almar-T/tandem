@@ -22,6 +22,7 @@ import { useTimer } from '@/features/timer/TimerProvider'
 import { supabase } from '@/lib/supabase'
 import { EnableNotifications } from '@/features/notifications/EnableNotifications'
 import { DayCalendar } from '@/features/dashboard/DayCalendar'
+import { CalendarStrip } from '@/features/gcal/CalendarStrip'
 import { MarkdownMessage } from '@/features/assistant/MarkdownMessage'
 import type { WorkSession } from '@/lib/types'
 
@@ -585,6 +586,9 @@ export function Dashboard() {
         onOpenTask={() => ed.openNew()}
         onOpenGoal={() => setGoalEditorOpen(true)}
       />
+
+      {/* Google Calendar events strip */}
+      <CalendarStrip />
 
       {/* Plan for the Day — two-column day calendar */}
       <DayCalendar profiles={profiles} />
