@@ -4,6 +4,8 @@ A shared, AI-powered productivity OS for two people — calendar dashboard, shar
 AI planning assistant, goals, a work timer with productivity states, analytics, and push
 notifications. Installable PWA, free to run, deployed from GitHub.
 
+**[Live app →](https://almar-t.github.io/tandem/)** · A personal project, built for two people (me and one other) — not a public product. Signups are disabled; it runs with two accounts only.
+
 > **Working name.** Tandem = two people moving as one toward a shared goal.
 
 ## Stack (all free tier, no credit card)
@@ -71,3 +73,9 @@ Server-side secrets (`GEMINI_API_KEY`, `VAPID_PRIVATE_KEY`) are set with
 | 8 | Notifications, daily check-in, log off summary |
 | 9 | (Optional) consent-based screen-share snapshots |
 | 10 | (Optional) Tauri desktop companion |
+
+## License
+
+Copyright © 2026 Almar Tishenko. All rights reserved. This is a personal
+project; the source is public for viewing and evaluation only and is not
+licensed for reuse. See [LICENSE](./LICENSE).
